@@ -3,9 +3,14 @@ import numpy
 from dt1.classifier import FeatureVector
 
 TreeNodeInfo = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
+"""1-indexed tree node info"""
 
 
 class DecisionTree:
+    """
+    Internally, all indices are 1-indexed.
+    """
+
     left: TreeNodeInfo
     """
     ID of left child, 0 if not present
@@ -62,7 +67,7 @@ class DecisionTree:
         while not self._is_leaf(id):
             assert id > 0
             feature: int = self.features.item(id)
-            if features.item(feature):  # True for right branch
+            if features.item(feature - 1):  # True for right branch
                 id = self.right.item(id)
             else:  # False for left branch
                 id = self.left.item(id)
