@@ -14,3 +14,10 @@ class InvalidTestSetError(DT1Exception):
 
     def __init__(self, message: str):
         super().__init__(message)
+
+
+class UpperBoundTooStrictError(DT1Exception):
+    """Raised when the provided upper bound for decision tree size is too strict to build a valid tree."""
+
+    def __init__(self, message: str):
+        super().__init__(message)

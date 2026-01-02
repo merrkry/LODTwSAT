@@ -1,9 +1,4 @@
-import numpy
-
-from dt1.classifier import FeatureVector
-
-TreeNodeInfo = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
-"""1-indexed tree node info"""
+from dt1.types import FeatureVector, TreeNodeInfo
 
 
 class DecisionTree:
