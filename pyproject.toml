@@ -8,6 +8,7 @@ dependencies = [
     "numpy>=2.4.0",
     "python-sat>=1.8.dev26",
     "scikit-learn>=1.8.0",
+    "pytest>=8.0.0",
 ]
 
 [build-system]
