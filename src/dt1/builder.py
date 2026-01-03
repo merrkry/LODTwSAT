@@ -283,12 +283,12 @@ def build_dt1_classifier(
                 right = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 node_feature = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 node_label = numpy.array([-1] * (size + 1), dtype=numpy.int32)
-                model = typing.cast(typing.List[typing.Any], model)
+                model = typing.cast(list[typing.Any], model)
                 for lit in model:
                     assignment: bool = lit > 0
                     var_id = abs(lit)
                     var_args = vpool.obj(var_id)
-                    var_args = typing.cast(typing.Tuple[str, ...], var_args)
+                    var_args = typing.cast(tuple[str, ...], var_args)
                     if var_args[0] == "l" and assignment:
                         i = int(var_args[1])
                         j = int(var_args[2])
