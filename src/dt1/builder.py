@@ -30,6 +30,8 @@ def build_dt1_classifier(
     assert n_samples == labels.shape[0]
     n_features = features.shape[1]
 
+    last_tree: DecisionTree | None = None
+
     for size in range(3, max_size + 1, -1):
         if size % 2 == 0:
             continue
@@ -145,14 +147,16 @@ def build_dt1_classifier(
                     [
                         Equals(
                             var("d", q, j, 0),
-                            [
-                                inner
-                                for i in gen_P(j)
-                                for inner in (
-                                    And(var("p", j, i), var("d", q, i, 0)),
-                                    And(var("a", q, i), var("r", i, j)),
-                                )
-                            ],
+                            Or(
+                                [
+                                    inner
+                                    for i in gen_P(j)
+                                    for inner in (
+                                        And(var("p", j, i), var("d", q, i, 0)),
+                                        And(var("a", q, i), var("r", i, j)),
+                                    )
+                                ]
+                            ),
                         )
                         for j in range(2, size + 1)
                     ]
@@ -163,14 +167,16 @@ def build_dt1_classifier(
                     [
                         Equals(
                             var("d", q, j, 1),
-                            [
-                                inner
-                                for i in gen_P(j)
-                                for inner in (
-                                    And(var("p", j, i), var("d", q, i, 1)),
-                                    And(Neg(var("a", q, i)), var("l", i, j)),
-                                )
-                            ],
+                            Or(
+                                [
+                                    inner
+                                    for i in gen_P(j)
+                                    for inner in (
+                                        And(var("p", j, i), var("d", q, i, 1)),
+                                        And(Neg(var("a", q, i)), var("l", i, j)),
+                                    )
+                                ]
+                            ),
                         )
                         for j in range(2, size + 1)
                     ]
@@ -238,7 +244,7 @@ def build_dt1_classifier(
                             And(var("v", j), Neg(var("c", j))),
                             Or(
                                 [
-                                    var("d", r, j, features[r][q])
+                                    var("d", r, j, features[q][r])
                                     for r in range(n_samples)
                                 ]
                             ),
@@ -253,7 +259,7 @@ def build_dt1_classifier(
                             And(var("v", j), var("c", j)),
                             Or(
                                 [
-                                    var("d", r, j, features[r][q])
+                                    var("d", r, j, features[q][r])
                                     for r in range(n_samples)
                                 ]
                             ),
@@ -267,3 +273,42 @@ def build_dt1_classifier(
         # TODO: replace with more modern solvers, especially those with native WCNF support
         with Solver(name="glucose3", bootstrap_with=encodings.clauses) as solver:
             unsat = not solver.solve()
+
+            if unsat:
+                break
+            else:
+                model = solver.get_model()
+
+                left = numpy.array([0] * (size + 1), dtype=numpy.int32)
+                right = numpy.array([0] * (size + 1), dtype=numpy.int32)
+                node_feature = numpy.array([0] * (size + 1), dtype=numpy.int32)
+                node_label = numpy.array([-1] * (size + 1), dtype=numpy.int32)
+                model = typing.cast(typing.List[typing.Any], model)
+                for lit in model:
+                    assignment: bool = lit > 0
+                    var_id = abs(lit)
+                    var_args = vpool.obj(var_id)
+                    var_args = typing.cast(typing.Tuple[str, ...], var_args)
+                    if var_args[0] == "l" and assignment:
+                        i = int(var_args[1])
+                        j = int(var_args[2])
+                        left[i] = j
+                    elif var_args[0] == "r" and assignment:
+                        i = int(var_args[1])
+                        j = int(var_args[2])
+                        right[i] = j
+                    elif var_args[0] == "a" and assignment:
+                        r = int(var_args[1])
+                        j = int(var_args[2])
+                        node_feature[j] = r + 1  # 1-indexed
+                    elif var_args[0] == "c" and assignment:
+                        j = int(var_args[1])
+                        node_label[j] = 1
+                    else:
+                        pass
+
+                last_tree = DecisionTree(
+                    left=left, right=right, features=node_feature, labels=node_label
+                )
+
+    return last_tree
