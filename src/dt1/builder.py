@@ -16,14 +16,27 @@ from pysat.solvers import Solver
 def build_dt1_classifier(
     features: FeatureMatrix, labels: LabelVector, max_size: int | None
 ) -> DecisionTree | None:
+    """
+    Build a DT1 classifier using SAT encoding.
+    :param features: training features
+    :param labels: training labels
+    :param max_size: maximum tree size, or None to auto-compute via CART
+    :return: DecisionTree if found, None if max_size is user-provided and too strict
+    """
+    # Track if upper bound can be trusted (auto-computed = trusted)
+    trusted_bound: bool = max_size is None
+
     if max_size is None:
         cart_tree = sklearn.tree.DecisionTreeClassifier().fit(features, labels)
         max_size = cart_tree.tree_.node_count
+        trusted_bound = True
 
     max_size = typing.cast(int, max_size)
 
     # We assume root is not a leaf
     if max_size < 3:
+        if trusted_bound:
+            assert False, f"Auto-computed max_size={max_size} is invalid (must be >= 3)"
         return None
 
     n_samples = features.shape[0]
@@ -310,5 +323,10 @@ def build_dt1_classifier(
                 last_tree = DecisionTree(
                     left=left, right=right, features=node_feature, labels=node_label
                 )
+
+    if last_tree is None and trusted_bound:
+        # Auto-computed upper bound should always yield a solution
+        # Failure indicates a bug in the SAT encoding
+        assert False, f"Failed to build tree with auto-computed max_size={max_size}"
 
     return last_tree

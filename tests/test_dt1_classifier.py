@@ -3,7 +3,7 @@ import pytest
 
 from dt1 import DT1Classifier
 from dt1.tree import DecisionTree
-from dt1.exceptions import InvalidTrainingSetError
+from dt1.exceptions import InvalidTrainingSetError, UpperBoundTooStrictError
 
 
 def is_consistent(features: np.ndarray, labels: np.ndarray) -> bool:
@@ -160,11 +160,11 @@ class TestDT1Classifier:
         assert accuracy == 1.0
 
     def test_max_size_too_small_raises_error(self):
-        """max_size < 3 should raise InvalidTrainingSetError."""
+        """max_size < 3 should raise UpperBoundTooStrictError when user-provided."""
         features = np.array([[False], [True]], dtype=bool)
         labels = np.array([False, True], dtype=bool)
 
-        with pytest.raises(InvalidTrainingSetError):
+        with pytest.raises(UpperBoundTooStrictError):
             DT1Classifier(features, labels, max_size=1)
 
     def test_prediction_shape(self, and_dataset):
@@ -188,11 +188,11 @@ class TestDT1Classifier:
             assert result == labels[i]
 
     def test_consistency_enforced(self):
-        """Inconsistent dataset should eventually fail."""
+        """Inconsistent dataset should fail fast with InvalidTrainingSetError."""
         features = np.array([[False], [False]], dtype=bool)
         labels = np.array([True, False], dtype=bool)
 
-        # An inconsistent dataset should not be learnable
-        # (no decision tree can achieve 100% accuracy)
+        # Inconsistent dataset (same feature with different labels) should fail immediately
+        # during validation, before attempting SAT solving
         with pytest.raises(InvalidTrainingSetError):
             DT1Classifier(features, labels, max_size=5)
