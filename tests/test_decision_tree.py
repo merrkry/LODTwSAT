@@ -18,7 +18,9 @@ class TestDecisionTree:
         left = np.array([0, 0], dtype=np.int32)
         right = np.array([0, 0], dtype=np.int32)
         features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)  # index 1 is the leaf
+        labels = np.array(
+            [NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32
+        )  # index 1 is the leaf
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         # Any feature vector should return the leaf label
@@ -30,7 +32,9 @@ class TestDecisionTree:
         left = np.array([0, 0], dtype=np.int32)
         right = np.array([0, 0], dtype=np.int32)
         features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)  # index 1 is the leaf
+        labels = np.array(
+            [NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32
+        )  # index 1 is the leaf
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         result = tree.predict(np.array([False], dtype=bool))
@@ -42,8 +46,18 @@ class TestDecisionTree:
         # Arrays must be size 4 (indices 0-3)
         left = np.array([0, 2, 0, 0], dtype=np.int32)  # node 1 -> node 2
         right = np.array([0, 3, 0, 0], dtype=np.int32)  # node 1 -> node 3
-        features = np.array([0, 1, 0, 0], dtype=np.int32)  # node 1 uses feature 1, nodes 2,3 are leaves
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
+        features = np.array(
+            [0, 1, 0, 0], dtype=np.int32
+        )  # node 1 uses feature 1, nodes 2,3 are leaves
+        labels = np.array(
+            [
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_IRRELEVANT,
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_POSITIVE,
+            ],
+            dtype=np.int32,
+        )
         # node 2: -1 (left leaf), node 3: 1 (right leaf)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
@@ -57,7 +71,15 @@ class TestDecisionTree:
         left = np.array([0, 2, 0, 0], dtype=np.int32)
         right = np.array([0, 3, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
+        labels = np.array(
+            [
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_IRRELEVANT,
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_POSITIVE,
+            ],
+            dtype=np.int32,
+        )
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
 
@@ -81,7 +103,19 @@ class TestDecisionTree:
         right = np.array([0, 5, 4, 0, 0, 7, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 2, 0, 0, 2, 0, 0], dtype=np.int32)
         # Node labels: internal nodes (1,2,5) have 0, leaves have -1 or 1
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)
+        labels = np.array(
+            [
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_IRRELEVANT,
+                NODE_LABEL_IRRELEVANT,
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_POSITIVE,
+                NODE_LABEL_IRRELEVANT,
+                NOTE_LABEL_NEGATIVE,
+                NOTE_LABEL_NEGATIVE,
+            ],
+            dtype=np.int32,
+        )
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
 
@@ -106,7 +140,15 @@ class TestDecisionTree:
         left = np.array([0, 2, 0, 0], dtype=np.int32)
         right = np.array([0, 3, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
+        labels = np.array(
+            [
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_IRRELEVANT,
+                NOTE_LABEL_NEGATIVE,
+                NODE_LABEL_POSITIVE,
+            ],
+            dtype=np.int32,
+        )
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
 

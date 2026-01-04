@@ -3,15 +3,15 @@ import typing
 
 import nnf
 import nnf.dimacs
-from nnf.operators import iff, implies
-from nnf.tseitin import to_CNF
 import numpy
 import sklearn.tree
 from nnf import NNF, Aux, Var
-from pysat.card import CardEnc
+from nnf.operators import iff, implies
+from nnf.tseitin import to_CNF
 from pysat.formula import CNF, IDPool
 from pysat.solvers import Solver
 
+from dt1.exceptions import UpperBoundTooStrictError
 from dt1.tree import (
     NODE_LABEL_IRRELEVANT,
     NODE_LABEL_POSITIVE,
@@ -37,8 +37,7 @@ def _build_dt_from_fixed_size(
     :param n_features: number of features
     :return: DecisionTree if SAT, None if UNSAT
     """
-    import collections.abc
-
+    print(f"Building DT1 with fixed size={size}...")
     n_samples = features.shape[0]
     n_features = features.shape[1]
     assert n_samples == labels.shape[0]
@@ -88,8 +87,32 @@ def _build_dt_from_fixed_size(
                 yield j
 
     def gen_P(i: int) -> collections.abc.Iterator[int]:
-        for j in range(i // 2, i):
+        # We tighten the upperbound a bit more strict than the paper,
+        # because some trivially invalid combinations are accessed but not encoded as structural constraints.
+        # Like `p(3, 2)`.
+        for j in range(max(i // 2, 1), min(i if i % 2 == 0 else i - 1, size)):
             yield j
+
+    # In `gen_LR` and `gen_RR`, we only enumerate on a subset of all nodes to reduce encoding size when build structural constraints .
+    # However, in constraint (7) for example, some trivially invalid combinations, like `r(2, 3)` are still accessed just like in `gen_P`.
+    # We explicitly assign false values here, to avoid the model "cheat" with these unchecked variables.
+    append_formula(
+        [
+            ~(var("l", i, j))
+            for i in range(1, size)
+            for j in range(i + 1, size + 1)
+            if j % 2 == 1
+        ]
+    )
+
+    append_formula(
+        [
+            ~(var("r", i, j))
+            for i in range(1, size)
+            for j in range(i + 1, size + 1)
+            if j % 2 == 0
+        ]
+    )
 
     # (1)
     append_formula(~var("v", 1))
@@ -236,7 +259,7 @@ def _build_dt_from_fixed_size(
     # (12) (13)
     # Since we don't have sample indicies in variables, we use 0-index as-is.
     for q in range(n_samples):
-        if labels[q] == 1:
+        if labels[q]:
             append_formula(
                 [
                     implies(
@@ -258,7 +281,7 @@ def _build_dt_from_fixed_size(
                         var("v", j) & var("c", j),
                         nnf.Or(
                             [
-                                ~var("d", r, j, features[q][r - 1])
+                                var("d", r, j, features[q][r - 1])
                                 for r in range(1, n_features + 1)
                             ]
                         ),
@@ -267,7 +290,7 @@ def _build_dt_from_fixed_size(
                 ]
             )
 
-    final_encoding = to_CNF(nnf.And(encodings_list), simplify=True)
+    final_encoding = to_CNF(nnf.And(encodings_list), simplify=False)
 
     var_labels = {}
     for outer in final_encoding.children:
@@ -304,6 +327,9 @@ def _build_dt_from_encoding(
             assignment: bool = lit > 0
             var_id = abs(lit)
             var_args = vpool.obj(var_id)
+            if not isinstance(var_args, tuple):
+                continue
+            # print(var_args, assignment)
             var_args = typing.cast(tuple[str, ...], var_args)
             if var_args[0] == "l" and assignment:
                 i = int(var_args[1])
@@ -316,7 +342,7 @@ def _build_dt_from_encoding(
             elif var_args[0] == "a" and assignment:
                 r = int(var_args[1])
                 j = int(var_args[2])
-                node_feature[j] = r + 1
+                node_feature[j] = r
             elif var_args[0] == "c" and assignment:
                 j = int(var_args[1])
                 node_label[j] = NODE_LABEL_POSITIVE
@@ -339,7 +365,7 @@ def build_dt1_classifier(
     Build a DT1 classifier using SAT encoding.
     :param features: training features
     :param labels: training labels
-    :param max_size: maximum tree size, or None to auto-compute via CART
+    :param max_size: maximum tree size, or None to auto-compute via CART and trivial heuristics. Invalid if < 3.
     :return: DecisionTree if found, None if max_size is user-provided and too strict
     """
     # Track if upper bound can be trusted (auto-computed = trusted)
@@ -352,28 +378,42 @@ def build_dt1_classifier(
 
     max_size = typing.cast(int, max_size)
 
-    if max_size < 3:
-        if trusted_bound:
-            assert False, f"Auto-computed max_size={max_size} is invalid (must be >= 3)"
-        return None
-
     n_samples = features.shape[0]
     assert n_samples == labels.shape[0]
     n_features = features.shape[1]
 
+    # Trivial upper bounds
+    max_size = min(
+        max_size,
+        # One leaf per sample
+        2 * n_samples - 1,
+        # Full binary tree with height n_features
+        # This is especially important, as our encoding a feature only used once per path.
+        2 ** (n_features + 1) - 1,
+    )
+
+    # Our encoding assumes tree size of at least 3.
+    max_size = max(max_size, 3)
+
     last_tree: DecisionTree | None = None
 
-    for size in range(3, max_size + 1, -1):
+    for size in range(max_size, 3 - 1, -1):
+        print(f"Trying size={size}...")
         if size % 2 == 0:
             continue
 
-        tree = _build_dt_from_fixed_size(features, labels, size, n_features)
+        tree = _build_dt_from_fixed_size(features, labels, size)
         if tree is None:
             break
 
         last_tree = tree
 
-    if last_tree is None and trusted_bound:
-        assert False, f"Failed to build tree with auto-computed max_size={max_size}"
+    if last_tree is None:
+        assert not trusted_bound, (
+            f"Failed to build tree with auto-computed max_size={max_size}"
+        )
+        raise UpperBoundTooStrictError(
+            f"Could not build a valid DT1 classifier with max_size={max_size}."
+        )
 
     return last_tree

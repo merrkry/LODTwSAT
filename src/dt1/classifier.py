@@ -4,7 +4,6 @@ from dt1.builder import build_dt1_classifier
 from dt1.exceptions import (
     InvalidTestSetError,
     InvalidTrainingSetError,
-    UpperBoundTooStrictError,
 )
 from dt1.tree import DecisionTree
 from dt1.types import FeatureMatrix, FeatureVector, LabelVector
@@ -21,7 +20,9 @@ def _check_consistent(features: FeatureMatrix, labels: LabelVector) -> None:
     unique_features, inverse = numpy.unique(features, axis=0, return_inverse=True)
 
     # For each unique feature, check if all corresponding labels are the same
-    unique_labels = numpy.array([labels[inverse == i] for i in range(len(unique_features))])
+    unique_labels = numpy.array(
+        [labels[inverse == i] for i in range(len(unique_features))]
+    )
 
     for i, label_group in enumerate(unique_labels):
         unique_label_vals = numpy.unique(label_group)
@@ -58,11 +59,7 @@ class DT1Classifier:
         self._n_features = features.shape[1]
 
         dt = build_dt1_classifier(features, labels, max_size)
-        if dt is None:
-            # User-provided max_size was too strict to build a valid tree
-            raise UpperBoundTooStrictError(
-                f"Could not build a valid DT1 classifier with max_size={max_size}."
-            )
+        assert dt is not None  # Exception should be raised during building
         self._decision_tree = dt
 
     def predict(self, features: FeatureMatrix) -> LabelVector:

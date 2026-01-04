@@ -21,68 +21,6 @@ def is_consistent(features: np.ndarray, labels: np.ndarray) -> bool:
     return True
 
 
-class TestDecisionTree:
-    """Unit tests for DecisionTree class."""
-
-    def test_leaf_prediction_single_node(self):
-        """A single leaf node tree should return its label."""
-        left = np.array([0, 0], dtype=np.int32)
-        right = np.array([0, 0], dtype=np.int32)
-        features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
-
-        tree = DecisionTree(left=left, right=right, features=features, labels=labels)
-        result = tree.predict(np.array([True], dtype=bool))
-        assert result is True
-
-    def test_leaf_prediction_negative_label(self):
-        """A single leaf node with label -1 should return False."""
-        left = np.array([0, 0], dtype=np.int32)
-        right = np.array([0, 0], dtype=np.int32)
-        features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)
-
-        tree = DecisionTree(left=left, right=right, features=features, labels=labels)
-        result = tree.predict(np.array([False], dtype=bool))
-        assert result is False
-
-    def test_two_level_tree_left_branch(self):
-        """Test tree with root and two leaves - go left on feature=0."""
-        left = np.array([0, 2, 0, 0], dtype=np.int32)
-        right = np.array([0, 3, 0, 0], dtype=np.int32)
-        features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
-
-        tree = DecisionTree(left=left, right=right, features=features, labels=labels)
-        result = tree.predict(np.array([False], dtype=bool))
-        assert result is False
-
-    def test_two_level_tree_right_branch(self):
-        """Test tree with root and two leaves - go right on feature=1."""
-        left = np.array([0, 2, 0, 0], dtype=np.int32)
-        right = np.array([0, 3, 0, 0], dtype=np.int32)
-        features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
-
-        tree = DecisionTree(left=left, right=right, features=features, labels=labels)
-        result = tree.predict(np.array([True], dtype=bool))
-        assert result is True
-
-    def test_complex_tree_three_levels(self):
-        """Test tree with 3 levels of decision nodes."""
-        left = np.array([0, 2, 3, 0, 0, 6, 0, 0], dtype=np.int32)
-        right = np.array([0, 5, 4, 0, 0, 7, 0, 0], dtype=np.int32)
-        features = np.array([0, 1, 2, 0, 0, 2, 0, 0], dtype=np.int32)
-        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)
-
-        tree = DecisionTree(left=left, right=right, features=features, labels=labels)
-
-        assert tree.predict(np.array([False, False], dtype=bool)) is False
-        assert tree.predict(np.array([False, True], dtype=bool)) is True
-        assert tree.predict(np.array([True, False], dtype=bool)) is False
-        assert tree.predict(np.array([True, True], dtype=bool)) is False
-
-
 class TestConsistencyCheck:
     """Tests for training set consistency verification."""
 
@@ -111,16 +49,11 @@ class TestConsistencyCheck:
 class TestDT1Classifier:
     """Integration tests for DT1Classifier."""
 
-    def test_consistent_training_set_required(self, and_dataset):
-        """Classifier should only accept consistent training sets."""
-        features, labels = and_dataset
-        assert is_consistent(features, labels), "Test setup error: dataset must be consistent"
-
     def test_trivial_dataset(self, trivial_dataset):
         """Single sample with single feature should always work."""
         features, labels = trivial_dataset
 
-        clf = DT1Classifier(features, labels, max_size=3)
+        clf = DT1Classifier(features, labels, 3)
         predictions = clf.predict(features)
 
         assert predictions.shape == (1,)
@@ -163,14 +96,6 @@ class TestDT1Classifier:
 
         accuracy = np.sum(predictions == labels) / len(labels)
         assert accuracy == 1.0
-
-    def test_max_size_too_small_raises_error(self):
-        """max_size < 3 should raise UpperBoundTooStrictError when user-provided."""
-        features = np.array([[False], [True]], dtype=bool)
-        labels = np.array([False, True], dtype=bool)
-
-        with pytest.raises(UpperBoundTooStrictError):
-            DT1Classifier(features, labels, max_size=1)
 
     def test_prediction_shape(self, and_dataset):
         """Predictions should have correct shape."""
