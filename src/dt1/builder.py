@@ -133,7 +133,7 @@ def _build_dt_from_fixed_size(
     )
     append_formula(
         [
-            iff(var("p", j, i), var("r", i, j + 1))
+            iff(var("p", j, i), var("r", i, j))
             for i in range(1, size + 1)
             for j in gen_RR(i)
         ]
@@ -145,19 +145,19 @@ def _build_dt_from_fixed_size(
     )
 
     # (7)
-    for q in range(1, n_features + 1):
-        append_formula(~var("d", q, 1, 0))
+    for r in range(1, n_features + 1):
+        append_formula(~var("d", r, 1, 0))
         append_formula(
             [
                 iff(
-                    var("d", q, j, 0),
+                    var("d", r, j, 0),
                     nnf.Or(
                         [
                             inner
                             for i in gen_P(j)
                             for inner in (
-                                (var("p", j, i) & var("d", q, i, 0)),
-                                (var("a", q, i) & var("r", i, j)),
+                                (var("p", j, i) & var("d", r, i, 0)),
+                                (var("a", r, i) & var("r", i, j)),
                             )
                         ]
                     ),
@@ -167,19 +167,19 @@ def _build_dt_from_fixed_size(
         )
 
     # (8)
-    for q in range(1, n_features + 1):
-        append_formula(~var("d", q, 1, 1))
+    for r in range(1, n_features + 1):
+        append_formula(~var("d", r, 1, 1))
         append_formula(
             [
                 iff(
-                    var("d", q, j, 1),
+                    var("d", r, j, 1),
                     nnf.Or(
                         [
                             inner
                             for i in gen_P(j)
                             for inner in (
-                                (var("p", j, i) & var("d", q, i, 1)),
-                                (var("a", q, i) & var("l", i, j)),
+                                (var("p", j, i) & var("d", r, i, 1)),
+                                (var("a", r, i) & var("l", i, j)),
                             )
                         ]
                     ),
@@ -202,8 +202,8 @@ def _build_dt_from_fixed_size(
             iff(
                 var("u", r, j),
                 nnf.Or(
-                    [(var("u", r, i) & var("p", j, i)) for i in gen_P(j)]
-                    + [var("a", r, j)]
+                    [var("a", r, j)]
+                    + [(var("u", r, i) & var("p", j, i)) for i in gen_P(j)]
                 ),
             )
             for j in range(1, size + 1)
@@ -234,6 +234,7 @@ def _build_dt_from_fixed_size(
     )
 
     # (12) (13)
+    # Since we don't have sample indicies in variables, we use 0-index as-is.
     for q in range(n_samples):
         if labels[q] == 1:
             append_formula(
@@ -307,9 +308,9 @@ def _build_dt_from_fixed_size(
                 j = int(var_args[2])
                 right[i] = j
             elif var_args[0] == "a" and assignment:
-                q = int(var_args[1])
+                r = int(var_args[1])
                 j = int(var_args[2])
-                node_feature[j] = q + 1
+                node_feature[j] = r + 1
             elif var_args[0] == "c" and assignment:
                 j = int(var_args[1])
                 node_label[j] = NODE_LABEL_POSITIVE
