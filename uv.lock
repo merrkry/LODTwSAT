@@ -34,6 +34,7 @@ name = "lodtwsat"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "nnf" },
     { name = "numpy" },
     { name = "python-sat" },
     { name = "scikit-learn" },
@@ -46,6 +47,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "nnf", specifier = ">=0.4.1" },
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "python-sat", specifier = ">=1.8.dev26" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
@@ -53,6 +55,15 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+
+[[package]]
+name = "nnf"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/16/12221f3c9d21340ca8378df5c047545e3e01ffb088b5177620e5bc8dd128/nnf-0.4.1.tar.gz", hash = "sha256:e972e7c1130d9e457241c8096e45ad3f16311c66e810e8c227deb3a43b4a3537", size = 593887, upload-time = "2022-12-13T05:01:13.81Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/01/e82d4848bc67cd02b11cd274dbe352f3f4490149361d83456ee63a766959/nnf-0.4.1-py3-none-any.whl", hash = "sha256:96d0d5797b829941cbbb816304690849cbfefd5361b4d78b378a6bd989c66ba2", size = 598774, upload-time = "2022-12-13T05:01:11.632Z" },
+]
 
 [[package]]
 name = "numpy"
