@@ -2,7 +2,12 @@ import numpy as np
 import pytest
 
 from dt1 import DT1Classifier
-from dt1.tree import DecisionTree
+from dt1.tree import (
+    DecisionTree,
+    NODE_LABEL_IRRELEVANT,
+    NODE_LABEL_POSITIVE,
+    NOTE_LABEL_NEGATIVE,
+)
 from dt1.exceptions import InvalidTrainingSetError, UpperBoundTooStrictError
 
 
@@ -24,18 +29,18 @@ class TestDecisionTree:
         left = np.array([0, 0], dtype=np.int32)
         right = np.array([0, 0], dtype=np.int32)
         features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([-1, 1], dtype=np.int32)
+        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         result = tree.predict(np.array([True], dtype=bool))
         assert result is True
 
     def test_leaf_prediction_negative_label(self):
-        """A single leaf node with label 0 should return False."""
+        """A single leaf node with label -1 should return False."""
         left = np.array([0, 0], dtype=np.int32)
         right = np.array([0, 0], dtype=np.int32)
         features = np.array([0, 0], dtype=np.int32)
-        labels = np.array([-1, 0], dtype=np.int32)
+        labels = np.array([NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         result = tree.predict(np.array([False], dtype=bool))
@@ -46,7 +51,7 @@ class TestDecisionTree:
         left = np.array([0, 2, 0, 0], dtype=np.int32)
         right = np.array([0, 3, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([-1, -1, 0, 1], dtype=np.int32)
+        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         result = tree.predict(np.array([False], dtype=bool))
@@ -57,7 +62,7 @@ class TestDecisionTree:
         left = np.array([0, 2, 0, 0], dtype=np.int32)
         right = np.array([0, 3, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 0, 0], dtype=np.int32)
-        labels = np.array([-1, -1, 0, 1], dtype=np.int32)
+        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE], dtype=np.int32)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
         result = tree.predict(np.array([True], dtype=bool))
@@ -68,7 +73,7 @@ class TestDecisionTree:
         left = np.array([0, 2, 3, 0, 0, 6, 0, 0], dtype=np.int32)
         right = np.array([0, 5, 4, 0, 0, 7, 0, 0], dtype=np.int32)
         features = np.array([0, 1, 2, 0, 0, 2, 0, 0], dtype=np.int32)
-        labels = np.array([-1, -1, -1, 0, 1, 1, 0, 0], dtype=np.int32)
+        labels = np.array([NOTE_LABEL_NEGATIVE, NODE_LABEL_IRRELEVANT, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NODE_LABEL_POSITIVE, NODE_LABEL_IRRELEVANT, NOTE_LABEL_NEGATIVE, NOTE_LABEL_NEGATIVE], dtype=np.int32)
 
         tree = DecisionTree(left=left, right=right, features=features, labels=labels)
 

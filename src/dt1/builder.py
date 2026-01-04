@@ -2,7 +2,12 @@ import typing
 import numpy
 import sklearn.tree
 
-from dt1.tree import DecisionTree
+from dt1.tree import (
+    DecisionTree,
+    NODE_LABEL_IRRELEVANT,
+    NODE_LABEL_POSITIVE,
+    NOTE_LABEL_NEGATIVE,
+)
 from dt1.types import FeatureMatrix, LabelVector
 
 from pysat.formula import CNF, And, Equals, IDPool, Implies, Neg, Or
@@ -295,7 +300,7 @@ def build_dt1_classifier(
                 left = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 right = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 node_feature = numpy.array([0] * (size + 1), dtype=numpy.int32)
-                node_label = numpy.array([0] * (size + 1), dtype=numpy.int32)
+                node_label = numpy.array([NODE_LABEL_IRRELEVANT] * (size + 1), dtype=numpy.int32)
                 model = typing.cast(list[typing.Any], model)
                 for lit in model:
                     assignment: bool = lit > 0
@@ -316,14 +321,14 @@ def build_dt1_classifier(
                         node_feature[j] = q + 1  # 1-indexed
                     elif var_args[0] == "c" and assignment:
                         j = int(var_args[1])
-                        node_label[j] = 1
+                        node_label[j] = NODE_LABEL_POSITIVE
                     else:
                         pass
 
-                # Previously we only assigned positive labels to leaves
+                # Leaves not assigned NODE_LABEL_POSITIVE get NOTE_LABEL_NEGATIVE
                 for i in range(1, size + 1):
-                    if node_feature[i] == 0 and node_label[i] == 0:
-                        node_label[i] = -1
+                    if node_feature[i] == 0 and node_label[i] == NODE_LABEL_IRRELEVANT:
+                        node_label[i] = NOTE_LABEL_NEGATIVE
 
                 last_tree = DecisionTree(
                     left=left, right=right, features=node_feature, labels=node_label

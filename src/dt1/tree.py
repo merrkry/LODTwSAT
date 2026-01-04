@@ -1,6 +1,15 @@
 from dt1.types import FeatureVector, TreeNodeInfo
 
 
+# Label encoding constants for decision tree nodes
+NOTE_LABEL_NEGATIVE: int = -1
+"""Negative label (predicts False)"""
+NODE_LABEL_POSITIVE: int = 1
+"""Positive label (predicts True)"""
+NODE_LABEL_IRRELEVANT: int = 0
+"""Internal node marker (not a leaf)"""
+
+
 class DecisionTree:
     """
     Internally, all indices are 1-indexed.
@@ -46,13 +55,13 @@ class DecisionTree:
             assert (
                 self.left.item(id) == 0
                 and self.right.item(id) == 0
-                and self.labels.item(id) != 0
+                and self.labels.item(id) != NODE_LABEL_IRRELEVANT
             )
         else:
             assert (
                 self.left.item(id) != 0
                 or self.right.item(id) != 0
-                and self.labels.item(id) == 0
+                and self.labels.item(id) == NODE_LABEL_IRRELEVANT
             )
         return is_leaf
 
@@ -65,5 +74,5 @@ class DecisionTree:
                 id = self.right.item(id)
             else:  # False for left branch
                 id = self.left.item(id)
-        assert self.labels.item(id) != 0
-        return self.labels.item(id) == 1
+        assert self.labels.item(id) != NODE_LABEL_IRRELEVANT
+        return self.labels.item(id) == NODE_LABEL_POSITIVE
