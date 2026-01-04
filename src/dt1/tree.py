@@ -25,8 +25,7 @@ class DecisionTree:
     labels: TreeNodeInfo
     """
     Labels at leaf nodes.
-    0/1 for negative/positive labels.
-    0 for internal nodes, which means this cannot be used for check of leaf nodes.
+    -1/1 for negative/positive labels, 0 for internal nodes.
     """
 
     def __init__(
@@ -44,7 +43,11 @@ class DecisionTree:
     def _is_leaf(self, id: int) -> bool:
         is_leaf: bool = self.features.item(id) == 0
         if is_leaf:
-            assert self.left.item(id) == 0 and self.right.item(id) == 0
+            assert (
+                self.left.item(id) == 0
+                and self.right.item(id) == 0
+                and self.labels.item(id) != 0
+            )
         else:
             assert (
                 self.left.item(id) != 0
@@ -62,4 +65,5 @@ class DecisionTree:
                 id = self.right.item(id)
             else:  # False for left branch
                 id = self.left.item(id)
-        return bool(self.labels.item(id))
+        assert self.labels.item(id) != 0
+        return self.labels.item(id) == 1

@@ -106,35 +106,31 @@ def build_dt1_classifier(
         )
 
         # (4)
-        def constraint_4():
-            def make_sum(i: int):
-                return CardEnc.equals(
-                    [var("l", i, j) for j in gen_LR(i)],
-                    bound=1,
-                    vpool=vpool,
-                )
-
-            return [
+        encodings.extend(
+            [
                 Implies(
                     Neg(var("v", i)),
-                    make_sum(i),
+                    CardEnc.equals(
+                        [var("l", i, j) for j in gen_LR(i)],
+                        bound=1,
+                        vpool=vpool,
+                    ),
                 )
                 for i in range(1, size + 1)
             ]
-
-        encodings.extend(constraint_4())
+        )
 
         # (5)
         encodings.extend(
             [
-                Equals(Neg(var("p", j, i)), var("l", i, j))
+                Equals(var("p", j, i), var("l", i, j))
                 for i in range(1, size + 1)
                 for j in gen_LR(i)
             ]
         )
         encodings.extend(
             [
-                Equals(Neg(var("p", j, i)), var("r", i, j + 1))
+                Equals(var("p", j, i), var("r", i, j + 1))
                 for i in range(1, size + 1)
                 for j in gen_RR(i)
             ]
@@ -152,55 +148,56 @@ def build_dt1_classifier(
             ]
         )
 
-        # (7) (8)
-        for q in range(n_samples):
-            if labels[q] == 0:
-                encodings.extend(Neg(var("d", q, 1, 0)))
-                encodings.extend(
-                    [
-                        Equals(
-                            var("d", q, j, 0),
-                            Or(
-                                [
-                                    inner
-                                    for i in gen_P(j)
-                                    for inner in (
-                                        And(var("p", j, i), var("d", q, i, 0)),
-                                        And(var("a", q, i), var("r", i, j)),
-                                    )
-                                ]
-                            ),
-                        )
-                        for j in range(2, size + 1)
-                    ]
-                )
-            else:
-                encodings.extend(Neg(var("d", q, 1, 1)))
-                encodings.extend(
-                    [
-                        Equals(
-                            var("d", q, j, 1),
-                            Or(
-                                [
-                                    inner
-                                    for i in gen_P(j)
-                                    for inner in (
-                                        And(var("p", j, i), var("d", q, i, 1)),
-                                        And(Neg(var("a", q, i)), var("l", i, j)),
-                                    )
-                                ]
-                            ),
-                        )
-                        for j in range(2, size + 1)
-                    ]
-                )
+        # (7)
+        for q in range(1, n_features + 1):
+            encodings.extend(Neg(var("d", q, 1, 0)))
+            encodings.extend(
+                [
+                    Equals(
+                        var("d", q, j, 0),
+                        Or(
+                            [
+                                inner
+                                for i in gen_P(j)
+                                for inner in (
+                                    And(var("p", j, i), var("d", q, i, 0)),
+                                    And(var("a", q, i), var("r", i, j)),
+                                )
+                            ]
+                        ),
+                    )
+                    for j in range(2, size + 1)
+                ]
+            )
+
+        # (8)
+        for q in range(1, n_features + 1):
+            encodings.extend(Neg(var("d", q, 1, 1)))
+            encodings.extend(
+                [
+                    Equals(
+                        var("d", q, j, 1),
+                        Or(
+                            [
+                                inner
+                                for i in gen_P(j)
+                                for inner in (
+                                    And(var("p", j, i), var("d", q, i, 1)),
+                                    And(var("a", q, i), var("l", i, j)),
+                                )
+                            ]
+                        ),
+                    )
+                    for j in range(2, size + 1)
+                ]
+            )
 
         # (9)
         encodings.extend(
             [
                 Implies(And(var("u", r, i), var("p", j, i)), Neg(var("a", r, j)))
                 for j in range(1, size + 1)
-                for r in range(n_samples)
+                for r in range(1, n_features + 1)
                 for i in gen_P(j)
             ]
         )
@@ -214,7 +211,7 @@ def build_dt1_classifier(
                     ),
                 )
                 for j in range(1, size + 1)
-                for r in range(n_samples)
+                for r in range(1, n_features + 1)
             ]
         )
 
@@ -224,7 +221,7 @@ def build_dt1_classifier(
                 Implies(
                     Neg(var("v", j)),
                     CardEnc.equals(
-                        [var("a", r, j) for r in range(n_samples)],
+                        [var("a", r, j) for r in range(1, n_features + 1)],
                         bound=1,
                         vpool=vpool,
                     ),
@@ -239,7 +236,7 @@ def build_dt1_classifier(
                 Implies(
                     var("v", j),
                     CardEnc.equals(
-                        [var("a", r, j) for r in range(n_samples)],
+                        [var("a", r, j) for r in range(1, n_features + 1)],
                         bound=0,
                         vpool=vpool,
                     ),
@@ -249,6 +246,9 @@ def build_dt1_classifier(
         )
 
         # (12) (13)
+        # Indices of samples aren't directly used in variable names,
+        # we can keep them 0-indexed as in the input.
+        # But note that feature indices are 1-indexed in variable names, so we sub one when accessing input.
         for q in range(n_samples):
             if labels[q] == 1:
                 encodings.extend(
@@ -257,8 +257,8 @@ def build_dt1_classifier(
                             And(var("v", j), Neg(var("c", j))),
                             Or(
                                 [
-                                    var("d", r, j, features[q][r])
-                                    for r in range(n_samples)
+                                    var("d", r, j, features[q][r - 1])
+                                    for r in range(1, n_features + 1)
                                 ]
                             ),
                         )
@@ -272,8 +272,8 @@ def build_dt1_classifier(
                             And(var("v", j), var("c", j)),
                             Or(
                                 [
-                                    var("d", r, j, features[q][r])
-                                    for r in range(n_samples)
+                                    Neg(var("d", r, j, features[q][r - 1]))
+                                    for r in range(1, n_features + 1)
                                 ]
                             ),
                         )
@@ -295,7 +295,7 @@ def build_dt1_classifier(
                 left = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 right = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 node_feature = numpy.array([0] * (size + 1), dtype=numpy.int32)
-                node_label = numpy.array([-1] * (size + 1), dtype=numpy.int32)
+                node_label = numpy.array([0] * (size + 1), dtype=numpy.int32)
                 model = typing.cast(list[typing.Any], model)
                 for lit in model:
                     assignment: bool = lit > 0
@@ -311,14 +311,19 @@ def build_dt1_classifier(
                         j = int(var_args[2])
                         right[i] = j
                     elif var_args[0] == "a" and assignment:
-                        r = int(var_args[1])
+                        q = int(var_args[1])
                         j = int(var_args[2])
-                        node_feature[j] = r + 1  # 1-indexed
+                        node_feature[j] = q + 1  # 1-indexed
                     elif var_args[0] == "c" and assignment:
                         j = int(var_args[1])
                         node_label[j] = 1
                     else:
                         pass
+
+                # Previously we only assigned positive labels to leaves
+                for i in range(1, size + 1):
+                    if node_feature[i] == 0 and node_label[i] == 0:
+                        node_label[i] = -1
 
                 last_tree = DecisionTree(
                     left=left, right=right, features=node_feature, labels=node_label
