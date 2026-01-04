@@ -281,6 +281,12 @@ def _build_dt_from_fixed_size(
     dimacs_str = nnf.dimacs.dumps(final_encoding, var_labels=var_labels, mode="cnf")
     encodings = CNF(from_string=dimacs_str)
 
+    return _build_dt_from_encoding(encodings, vpool, size)
+
+
+def _build_dt_from_encoding(
+    encodings: CNF, vpool: IDPool, size: int
+) -> DecisionTree | None:
     with Solver(name="glucose3", bootstrap_with=encodings) as solver:
         if not solver.solve():
             return None
