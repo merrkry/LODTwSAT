@@ -1,6 +1,6 @@
 import numpy
 
-from dt1.builder import build_dt1_classifier
+from dt1.builder import BuildResult, build_dt1_classifier
 from dt1.exceptions import (
     InvalidTestSetError,
     InvalidTrainingSetError,
@@ -20,11 +20,9 @@ def _check_consistent(features: FeatureMatrix, labels: LabelVector) -> None:
     unique_features, inverse = numpy.unique(features, axis=0, return_inverse=True)
 
     # For each unique feature, check if all corresponding labels are the same
-    unique_labels = numpy.array(
-        [labels[inverse == i] for i in range(len(unique_features))]
-    )
-
-    for i, label_group in enumerate(unique_labels):
+    for i in range(len(unique_features)):
+        mask = inverse == i  # Boolean mask for rows matching the i-th unique feature
+        label_group = labels[mask]  # Corresponding labels where mask is True
         unique_label_vals = numpy.unique(label_group)
         if len(unique_label_vals) > 1:
             feature_tuple = tuple(unique_features[i])
@@ -37,16 +35,31 @@ class DT1Classifier:
     _n_samples: int
     _n_features: int
     _decision_tree: DecisionTree
+    _build_result: BuildResult
 
     def __init__(
-        self, features: FeatureMatrix, labels: LabelVector, max_size: int | None = None
+        self,
+        features: FeatureMatrix,
+        labels: LabelVector,
+        max_size: int | None = None,
+        *,
+        timeout: float | None = None,
+        verbose: bool = False,
     ) -> None:
         """
         Initialize and train a DT1 classifier.
-        :param max_size: upper bound of decision tree size.
-            If None, scikit's decision tree builder will be called for upper bound approximation.
-        :raises InvalidTrainingSetError: if features/labels mismatch or inconsistent dataset
-        :raises UpperBoundTooStrictError: if user-provided max_size is too strict
+
+        Args:
+            features: training features (binary matrix)
+            labels: training labels (binary vector)
+            max_size: upper bound of decision tree size.
+                If None, scikit's decision tree builder will be called for upper bound approximation.
+            timeout: timeout for SAT solver in seconds (default: 60)
+            verbose: if True, print progress information
+
+        Raises:
+            InvalidTrainingSetError: if features/labels mismatch or inconsistent dataset
+            UpperBoundTooStrictError: if user-provided max_size is too strict
         """
         if features.shape[0] != labels.shape[0]:
             raise InvalidTrainingSetError(
@@ -58,9 +71,16 @@ class DT1Classifier:
         self._n_samples = features.shape[0]
         self._n_features = features.shape[1]
 
-        dt = build_dt1_classifier(features, labels, max_size)
-        assert dt is not None  # Exception should be raised during building
-        self._decision_tree = dt
+        result = build_dt1_classifier(
+            features, labels, max_size, timeout=timeout, verbose=verbose
+        )
+        self._decision_tree = result.tree
+        self._build_result = result  # Store for access to timing info
+
+    @property
+    def build_result(self) -> BuildResult:
+        """Return the build result containing timing information."""
+        return self._build_result
 
     def predict(self, features: FeatureMatrix) -> LabelVector:
         if features.shape[1] != self._n_features:
