@@ -55,7 +55,6 @@ def run_sampling_experiment(
     print(f"Loading dataset: {dataset_name}")
     X_full, y_full = load_and_preprocess(
         dataset_name,
-        random_state=random_state,
         min_feature_freq=min_feature_freq,
         feature_selection="kbest" if n_features else None,
         n_features=n_features,

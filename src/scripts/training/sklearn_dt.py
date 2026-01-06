@@ -1,6 +1,6 @@
 """Training utilities for sklearn DecisionTreeClassifier."""
 
-from __future__ import annotations
+from typing import Literal
 
 import dataclasses
 
@@ -27,7 +27,7 @@ def train_sklearn_dt(
     *,
     max_depth: int | None = None,
     random_state: int | None = None,
-    criterion: str = "gini",
+    criterion: Literal["entropy", "gini", "log_loss"] = "gini",
 ) -> SklearnDTResult:
     """
     Train sklearn DecisionTreeClassifier.

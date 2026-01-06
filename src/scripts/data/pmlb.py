@@ -28,6 +28,8 @@ def load_dataset(
         Tuple of (features, labels) as numpy arrays
     """
     features, labels = fetch_data(name, return_X_y=True, local_cache_dir=".cache")
+    features = np.array(features)
+    labels = np.array(labels)
     return features, labels
 
 
@@ -84,7 +86,6 @@ def preprocess(
 def load_and_preprocess(
     dataset_name: str,
     *,
-    random_state: int | None = None,
     encode_features: str = "onehot",
     binarize_labels: str = "ovr",
     min_feature_freq: float = 0.05,
@@ -108,7 +109,7 @@ def load_and_preprocess(
     Returns:
         Tuple of (processed_features, processed_labels)
     """
-    features, labels = load_dataset(dataset_name, random_state=random_state)
+    features, labels = load_dataset(dataset_name)
 
     return preprocess(
         features,

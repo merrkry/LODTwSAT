@@ -513,8 +513,6 @@ def build_dt1_classifier(
         max_size = cart_tree.tree_.node_count
         trusted_bound = True
 
-    max_size = typing.cast(int, max_size)
-
     n_samples = features.shape[0]
     assert n_samples == labels.shape[0]
     n_features = features.shape[1]

@@ -5,18 +5,26 @@ description = "Reproduction of experiments in Learning Optimal Decision Trees wi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "microsoft-python-type-stubs",
   "nnf>=0.4.1",
   "numpy>=2.4.0",
+  "pandas-stubs>=2.3.3.251201",
   "python-sat>=1.8.dev26",
   "scikit-learn>=1.8.0",
 ]
+
+[tool.pyrefly]
+project-includes = ["**/*.py*", "**/*.ipynb"]
 
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "dt1"
+module-name = ["dt1", "scripts"]
+
+[tool.uv.sources]
+microsoft-python-type-stubs = { git = "https://github.com/microsoft/python-type-stubs" }
 
 [dependency-groups]
 dev = ["pmlb>=1.0.1.post3", "pytest>=9.0.2"]
