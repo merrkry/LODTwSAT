@@ -1,3 +1,3 @@
 # LODTwSAT
 
-Reproduction of experiments in Learning Optimal Decision Trees with SAT by Narodytska et al.
+Reproduction of algorithm in Learning Optimal Decision Trees with SAT by Narodytska et al.
