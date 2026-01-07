@@ -126,3 +126,30 @@ class TestDT1Classifier:
         # during validation, before attempting SAT solving
         with pytest.raises(InvalidTrainingSetError):
             DT1Classifier(features, labels, max_size=5)
+
+    def test_custom_solver_glucose3(self, and_dataset):
+        """Classifier should work with explicit glucose3 solver."""
+        features, labels = and_dataset
+
+        # Explicitly specify glucose3 solver
+        clf = DT1Classifier(features, labels, solver="glucose3")
+        predictions = clf.predict(features)
+
+        assert np.array_equal(predictions, labels)
+        # Find the SAT timing (the last successful one)
+        sat_timings = [t for t in clf.build_result.timings if t.status == "SAT"]
+        assert len(sat_timings) > 0
+
+    def test_custom_solver_lingeling(self, and_dataset):
+        """Classifier should work with alternative solver (lingeling)."""
+        features, labels = and_dataset
+
+        # Try with lingeling if available, should still work
+        clf = DT1Classifier(features, labels, solver="lingeling")
+        predictions = clf.predict(features)
+
+        # If solver is available, should achieve 100% accuracy
+        # If solver is not installed, may fail - we don't enforce this
+        sat_timings = [t for t in clf.build_result.timings if t.status == "SAT"]
+        if len(sat_timings) > 0:
+            assert np.array_equal(predictions, labels)

@@ -44,6 +44,7 @@ class DT1Classifier:
         max_size: int | None = None,
         *,
         timeout: float | None = None,
+        solver: str = "glucose3",
         verbose: bool = False,
     ) -> None:
         """
@@ -55,6 +56,7 @@ class DT1Classifier:
             max_size: upper bound of decision tree size.
                 If None, scikit's decision tree builder will be called for upper bound approximation.
             timeout: timeout for SAT solver in seconds (default: 60)
+            solver: name of SAT solver to use (default: "glucose3")
             verbose: if True, print progress information
 
         Raises:
@@ -72,7 +74,7 @@ class DT1Classifier:
         self._n_features = features.shape[1]
 
         result = build_dt1_classifier(
-            features, labels, max_size, timeout=timeout, verbose=verbose
+            features, labels, max_size, timeout=timeout, solver=solver, verbose=verbose
         )
         self._decision_tree = result.tree
         self._build_result = result  # Store for access to timing info

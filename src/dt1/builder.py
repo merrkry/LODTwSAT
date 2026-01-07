@@ -67,6 +67,7 @@ def _build_dt_from_fixed_size(
     labels: LabelVector,
     size: int,
     timeout: float,
+    solver_name: str = "glucose3",
 ) -> tuple[DecisionTree | None, BuildTiming]:
     """
     Build a decision tree with exactly `size` nodes using SAT encoding.
@@ -76,6 +77,7 @@ def _build_dt_from_fixed_size(
         labels: training labels
         size: exact number of nodes in the tree (must be odd, >= 3)
         timeout: timeout for SAT solver in seconds
+        solver_name: name of SAT solver to use (default: "glucose3")
 
     Returns:
         Tuple of (DecisionTree if SAT, None if UNSAT/TIMEOUT, BuildTiming info)
@@ -363,10 +365,10 @@ def _build_dt_from_fixed_size(
     start_solving = time.time()
 
     # Solve SAT with timeout
-    with Solver(name="glucose3", bootstrap_with=encodings) as solver:
+    with Solver(name=solver_name, bootstrap_with=encodings) as sat_solver:
         result_holder: dict[str, Any] = {}
         thread = threading.Thread(
-            target=_solve_with_timeout, args=(solver, result_holder)
+            target=_solve_with_timeout, args=(sat_solver, result_holder)
         )
         thread.start()
         thread.join(timeout=timeout)
@@ -483,6 +485,7 @@ def build_dt1_classifier(
     max_size: int | None = None,
     *,
     timeout: float | None = None,
+    solver: str = "glucose3",
     verbose: bool = False,
 ) -> BuildResult:
     """
@@ -493,6 +496,7 @@ def build_dt1_classifier(
         labels: training labels
         max_size: maximum tree size, or None to auto-compute via CART and trivial heuristics
         timeout: timeout for SAT solver in seconds (default: 60)
+        solver: name of SAT solver to use (default: "glucose3")
         verbose: if True, print progress information
 
     Returns:
@@ -540,7 +544,9 @@ def build_dt1_classifier(
         if verbose:
             print(f"Trying size={size}...")
 
-        tree, timing = _build_dt_from_fixed_size(features, labels, size, timeout)
+        tree, timing = _build_dt_from_fixed_size(
+            features, labels, size, timeout, solver
+        )
         timings.append(timing)
 
         if tree is None:
