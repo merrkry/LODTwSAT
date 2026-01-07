@@ -340,15 +340,19 @@ def _build_dt_from_fixed_size(
     encoding_time = time.time() - start_encoding
 
     start_processing = time.time()
-    final_encoding = to_CNF(nnf.And(encodings_list), simplify=False)
+    # Automatically simplify encodings with simple heuristics,
+    # this hopefully reduces the overhead of constructing constraints with high-level symbols.
+    # https://python-nnf.readthedocs.io/en/stable/nnf.html#nnf.NNF.simplify
+    full_encodings = NNF.simplify(nnf.And(encodings_list))
+    cnf_encodings = to_CNF(full_encodings, simplify=True)
     n_vars = len(var_cache)
-    n_clauses = len(final_encoding.children)
+    n_clauses = len(cnf_encodings.children)
 
     # Convert to DIMACS format
     # `dumps` requires mapping from variable names to integers,
     # we assign numeric id from vpool for auxiliary variables introduced by python-nnf.
     var_labels: dict[Any, int] = {}
-    for outer in final_encoding.children:
+    for outer in cnf_encodings.children:
         for inner in outer.children:
             if type(inner.name) is nnf.Aux:
                 name = inner.name
@@ -357,7 +361,7 @@ def _build_dt_from_fixed_size(
                 assert type(inner.name) is int
                 var_labels[inner.name] = inner.name
 
-    dimacs_str = nnf.dimacs.dumps(final_encoding, var_labels=var_labels, mode="cnf")
+    dimacs_str = nnf.dimacs.dumps(cnf_encodings, var_labels=var_labels, mode="cnf")
     processing_time = time.time() - start_processing
     encodings = CNF(from_string=dimacs_str)
 
