@@ -111,13 +111,12 @@ def _build_dt_from_fixed_size(
     def encode_sum(literals: list[Var], bound: typing.Literal[0, 1]) -> NNF:
         if bound == 0:
             return nnf.And([~lit for lit in literals])
-        else:
+        else:  # exactly one, we use sequential counter encoding as in the paper
+            s = [nnf.Var.aux() for _ in range(len(literals))]
             return nnf.And(
-                [
-                    nnf.Or([~literals[i], ~literals[j]])
-                    for i in range(len(literals))
-                    for j in range(i + 1, len(literals))
-                ]
+                [implies(literals[i], s[i]) for i in range(len(literals))]
+                + [implies(s[i - 1], s[i]) for i in range(1, len(literals))]
+                + [implies(s[i - 1], ~literals[i]) for i in range(1, len(literals))]
                 + [nnf.Or(literals)]
             )
 
