@@ -442,7 +442,7 @@ def run_batch_parallel(
                     result = fut.result()
                     results.append(result)
                     vprint(
-                        f"Run {run_idx}: OK (status={result.get('status')}, dt1_time={result.get('dt1_time')})"
+                        f"Run {run_idx}: {result.get('status')} (dt1_time={result.get('dt1_time')})"
                     )
                 except Exception as e:
                     results.append(
