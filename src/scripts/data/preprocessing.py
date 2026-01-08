@@ -127,18 +127,23 @@ def binarize_labels_ovr(
     """
     Convert multi-class labels to binary via one-vs-rest.
 
-    Selects the rarest class as positive (minority class) for balanced
-    binary classification.
+    Selects the median class by frequency (prefer minor if even number of classes)
+    as positive for balanced binary classification.
 
     Args:
         raw_labels: Raw labels from PMLB
 
     Returns:
-        Tuple of (binary_labels, minority_label_value)
+        Tuple of (binary_labels, positive_label_value)
     """
     unique_labels, counts = np.unique(raw_labels, return_counts=True)
-    minority_idx = np.argmin(counts)
-    minority_label = unique_labels[minority_idx]
-    binary_labels = (raw_labels == minority_label).astype(bool)
+    sorted_indices = np.argsort(counts)
+    n_classes = len(unique_labels)
+    if n_classes % 2 == 1:
+        median_idx = sorted_indices[n_classes // 2]
+    else:
+        median_idx = sorted_indices[n_classes // 2 - 1]
+    positive_label = unique_labels[median_idx]
+    binary_labels = (raw_labels == positive_label).astype(bool)
 
-    return binary_labels, minority_label
+    return binary_labels, positive_label
