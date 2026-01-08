@@ -38,8 +38,7 @@ def _train_dt1_worker(
         )
         elapsed = time.time() - start
         train_acc = float(np.mean(clf.predict(X_train) == y_train))
-        tree = clf._decision_tree
-        n_nodes = int(np.sum(tree.labels != 0))
+        n_nodes = clf._decision_tree.size
         result["ok"] = {
             "classifier": clf,
             "train_accuracy": train_acc,

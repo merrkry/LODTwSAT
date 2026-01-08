@@ -7,6 +7,47 @@ from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from sklearn.preprocessing import OneHotEncoder
 
 
+class ThresholdLabelBinarizer:
+    """Binarize labels using threshold grouping: label >= threshold → 1, else 0."""
+
+    def __init__(self, threshold: int = 1):
+        self.threshold = threshold
+        self.positive_class_: int | None = None
+
+    def fit(self, labels: np.ndarray) -> "ThresholdLabelBinarizer":
+        """Store threshold and determine positive class indicator."""
+        self.positive_class_ = self.threshold
+        return self
+
+    def transform(self, labels: np.ndarray) -> np.ndarray:
+        """Convert labels to binary: (labels >= threshold) → 1."""
+        return (labels >= self.threshold).astype(bool)
+
+
+def binarize_labels_ovr(
+    raw_labels: np.ndarray,
+) -> tuple[np.ndarray, int]:
+    """
+    Convert multi-class labels to binary via one-vs-rest.
+
+    Selects the minority class (smallest count) as positive.
+    This creates an imbalanced binary problem.
+
+    Args:
+        raw_labels: Raw labels from PMLB
+
+    Returns:
+        Tuple of (binary_labels, positive_label_value)
+    """
+    unique_labels, counts = np.unique(raw_labels, return_counts=True)
+    minority_idx = int(np.argmin(counts))
+    positive_label = unique_labels[minority_idx]
+
+    binary_labels = raw_labels == positive_label
+
+    return binary_labels, int(positive_label)
+
+
 def filter_by_frequency(
     features: np.ndarray,
     *,
@@ -119,31 +160,3 @@ def one_hot_encode(
     """
     encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
     return encoder.fit_transform(raw_features).astype(bool)
-
-
-def binarize_labels_ovr(
-    raw_labels: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Convert multi-class labels to binary via one-vs-rest.
-
-    Selects the median class by frequency (prefer minor if even number of classes)
-    as positive for balanced binary classification.
-
-    Args:
-        raw_labels: Raw labels from PMLB
-
-    Returns:
-        Tuple of (binary_labels, positive_label_value)
-    """
-    unique_labels, counts = np.unique(raw_labels, return_counts=True)
-    sorted_indices = np.argsort(counts)
-    n_classes = len(unique_labels)
-    if n_classes % 2 == 1:
-        median_idx = sorted_indices[n_classes // 2]
-    else:
-        median_idx = sorted_indices[n_classes // 2 - 1]
-    positive_label = unique_labels[median_idx]
-    binary_labels = (raw_labels == positive_label).astype(bool)
-
-    return binary_labels, positive_label

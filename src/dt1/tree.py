@@ -76,3 +76,8 @@ class DecisionTree:
                 id = self.left.item(id)
         assert self.labels.item(id) != NODE_LABEL_IRRELEVANT
         return self.labels.item(id) == NODE_LABEL_POSITIVE
+
+    @property
+    def size(self) -> int:
+        """Return total number of nodes in the tree."""
+        return len(self.labels) - 1

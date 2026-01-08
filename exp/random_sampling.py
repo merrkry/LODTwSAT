@@ -5,19 +5,19 @@ Data Pipeline per Run:
     1. Load dataset from PMLB (e.g., 'cars')
     2. Preprocess:
        - One-hot encode categorical features
-       - Binarize labels (one-vs-rest, median class = positive)
+       - Binarize labels (one-vs-rest, minority class = positive)
        - Filter features by frequency (0.05 <= freq <= 0.95)
        - Ensure consistency (remove conflicting samples)
-    3. Split: 80% train, 20% test (fixed random_state=42)
-    4. Sample training subset at rate r with unique random state per run
+    3. Sample training subset at rate r with unique random state per run
+    4. Test set = remaining samples (not sampled)
     5. Train CART (sklearn DecisionTreeClassifier)
     6. Train DT1 with timeout, assert 100% training accuracy
     7. Collect metrics
 
 Metrics per Run (CSV columns):
     - dataset, rate, run, samples, features
-    - cart_size, cart_test_acc
-    - dt1_size, dt1_test_acc, dt1_time, status
+    - cart_size, cart_acc
+    - dt1_size, dt1_acc, dt1_time, status
 
 Aggregation per Batch (rate):
     - Average of all numeric metrics across runs
@@ -37,22 +37,31 @@ from __future__ import annotations
 
 import argparse
 import csv
-import multiprocessing
+import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, ALL_COMPLETED
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.model_selection import train_test_split
 
-from scripts.data.pmlb import load_and_preprocess
 from scripts.data.preprocessing import filter_by_frequency, make_consistent
 from scripts.training.dt1 import DT1Timeout, train_dt1
 from scripts.training.sklearn_dt import train_sklearn_dt
 from scripts.table import print_batch_row
 
 warnings.filterwarnings("ignore", module="dt1")
+
+# Global verbosity flag
+VERBOSE = False
+
+
+def vprint(*args, **kwargs) -> None:
+    """Print with [VERBOSE] prefix if verbose mode is enabled."""
+    if VERBOSE:
+        print("  [VERBOSE]", *args, **kwargs)
+
 
 DEFAULT_DATASETS = "cars"
 DEFAULT_RATES = "0.01,0.02,0.05,0.10,0.15,0.20,0.25"
@@ -145,6 +154,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Number of worker threads for parallel execution (default: CPU cores)",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Enable verbose output",
+    )
     return parser.parse_args()
 
 
@@ -161,40 +177,68 @@ def preprocess_dataset(
 
 
 def run_single(
-    X_train_full: np.ndarray,
-    y_train_full: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    dataset: str,
     rate: float,
     run_idx: int,
     timeout: int,
+    n_features: int,
 ) -> dict[str, Any]:
-    """Run a single experiment for one sampling rate and random state."""
-    n_samples = max(2, int(len(X_train_full) * rate))
-    rng = np.random.default_rng(run_idx)
-    indices = rng.choice(len(X_train_full), size=n_samples, replace=False)
-    X_train = X_train_full[indices]
-    y_train = y_train_full[indices]
+    """Run a single experiment with full data pipeline per run."""
+    # Step 1: Load raw data
+    from scripts.data.pmlb import load_dataset
 
-    X_train, y_train, feature_indices = preprocess_dataset(X_train, y_train)
-    X_test_filtered = X_test[:, feature_indices]
+    X_raw, y_raw = load_dataset(dataset)
+
+    # Step 2: Preprocess (one-hot encode, binarize, frequency filter on whole dataset)
+    from scripts.data.pmlb import preprocess
+
+    X_full, y_full = preprocess(
+        X_raw,
+        y_raw,
+        encode_features="onehot",
+        binarize_labels="threshold",
+        binarize_threshold=1,  # unacc=0, acc/good/vgood=1
+        min_feature_freq=0.05,  # Filter on whole dataset
+        feature_selection=None,
+        ensure_consistent=False,
+    )
+
+    # Step 3: Sample at rate r (unique random state per run)
+    n_samples = max(2, int(len(X_full) * rate))
+    rng = np.random.default_rng(run_idx)
+    indices = rng.choice(len(X_full), size=n_samples, replace=False)
+
+    # Training set = sampled data, test set = rest
+    X_train_full = X_full[indices]
+    y_train_full = y_full[indices]
+    test_mask = np.ones(len(X_full), dtype=bool)
+    test_mask[indices] = False
+    X_test_full = X_full[test_mask]
+    y_test_full = y_full[test_mask]
+
+    # Step 4: Ensure consistency on training set (last step, clean data for solver)
+    X_train, y_train, feature_indices = preprocess_dataset(X_train_full, y_train_full)
+
+    # Test set: same feature filtering as training, but NOT made consistent
+    # (test set should reflect real-world distribution, not filtered)
+    X_test = X_test_full[:, feature_indices]
+    y_test = y_test_full
 
     samples = len(X_train)
-    features = X_train.shape[1]
 
-    cart_result = train_sklearn_dt(X_train, y_train, X_test_filtered, y_test)
+    # Step 5: Train CART (same training set as DT1)
+    cart_result = train_sklearn_dt(X_train, y_train, X_test, y_test)
     cart_size = cart_result.n_nodes
-    cart_test_acc = cart_result.test_accuracy
+    cart_acc = cart_result.test_accuracy
 
+    # Step 6: Train DT1 with timeout, assert 100% training accuracy
     dt1_status = "OK"
     dt1_size: int | None = None
-    dt1_test_acc: float | None = None
+    dt1_acc: float | None = None
     dt1_time: float | None = None
 
     try:
-        dt1_result = train_dt1(
-            X_train, y_train, X_test_filtered, y_test, timeout=timeout
-        )
+        dt1_result = train_dt1(X_train, y_train, X_test, y_test, timeout=timeout)
         dt1_time = dt1_result.elapsed
 
         assert dt1_result.train_accuracy == 1.0, (
@@ -202,7 +246,7 @@ def run_single(
         )
 
         dt1_size = dt1_result.n_nodes
-        dt1_test_acc = dt1_result.test_accuracy
+        dt1_acc = dt1_result.test_accuracy
     except DT1Timeout:
         dt1_status = "TIMEOUT"
         dt1_time = timeout
@@ -211,54 +255,61 @@ def run_single(
     except Exception as e:
         raise RuntimeError(f"DT1 error: {type(e).__name__}: {e}")
 
-    cart_test_acc_rounded = (
-        round(cart_test_acc, 4) if cart_test_acc is not None else None
-    )
-    dt1_test_acc_rounded = round(dt1_test_acc, 4) if dt1_test_acc is not None else None
+    cart_acc_rounded = round(cart_acc, 4) if cart_acc is not None else None
+    dt1_acc_rounded = round(dt1_acc, 4) if dt1_acc is not None else None
     dt1_time_rounded = round(dt1_time, 4) if dt1_time is not None else None
 
     return {
         "samples": samples,
-        "features": features,
+        "features": n_features,  # Per-dataset statistic
         "cart_size": cart_size,
-        "cart_test_acc": cart_test_acc_rounded,
+        "cart_acc": cart_acc_rounded,
         "dt1_size": dt1_size,
-        "dt1_test_acc": dt1_test_acc_rounded,
+        "dt1_acc": dt1_acc_rounded,
         "dt1_time": dt1_time_rounded,
         "status": dt1_status,
     }
 
 
 def aggregate_batch(runs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate per-run results into batch statistics."""
+    """Aggregate per-run results into batch statistics.
+
+    Only successful runs (status == "OK") are included in averages.
+    Both CART and DT1 metrics are excluded when DT1 times out.
+
+    Status logic:
+    - OK: all runs completed successfully
+    - PARTIAL_TIMEOUT: some runs timed out or errored
+    - ALL_TIMEOUT: all runs timed out or errored
+    """
     agg: dict[str, Any] = {}
 
-    samples_list = [r["samples"] for r in runs]
-    features_list = [r["features"] for r in runs]
-    cart_sizes = [r["cart_size"] for r in runs if r["cart_size"] is not None]
-    cart_tests = [r["cart_test_acc"] for r in runs if r["cart_test_acc"] is not None]
+    # Count runs that didn't complete DT1 successfully
+    n_failed = sum(1 for r in runs if r["status"] in ("TIMEOUT", "ERROR"))
 
-    agg["samples"] = int(np.mean(samples_list))
-    agg["features"] = int(np.mean(features_list))
-    agg["cart_size"] = float(np.mean(cart_sizes)) if cart_sizes else None
-    agg["cart_test_acc"] = round(float(np.mean(cart_tests)), 4) if cart_tests else None
+    # Only successful runs are included in averages
+    successful = [r for r in runs if r["status"] == "OK"]
 
-    dt1_sizes = [r["dt1_size"] for r in runs if r["dt1_size"] is not None]
-    dt1_tests = [r["dt1_test_acc"] for r in runs if r["dt1_test_acc"] is not None]
-    dt1_times = [r["dt1_time"] for r in runs if r["dt1_time"] is not None]
-
-    agg["dt1_size"] = round(float(np.mean(dt1_sizes)), 1) if dt1_sizes else None
-    agg["dt1_test_acc"] = round(float(np.mean(dt1_tests)), 4) if dt1_tests else None
-    agg["dt1_time"] = round(float(np.mean(dt1_times)), 4) if dt1_times else None
-
-    n_timeouts = sum(1 for r in runs if r["status"] == "TIMEOUT")
-
-    if n_timeouts == len(runs):
-        agg["status"] = "ALL_TIMEOUT"
+    if successful:
+        agg["samples"] = int(np.mean([r["samples"] for r in successful]))
+        agg["features"] = runs[0]["features"]
+        agg["cart_size"] = float(np.mean([r["cart_size"] for r in successful]))
+        agg["cart_acc"] = round(float(np.mean([r["cart_acc"] for r in successful])), 4)
+        agg["dt1_size"] = round(float(np.mean([r["dt1_size"] for r in successful])), 1)
+        agg["dt1_acc"] = round(float(np.mean([r["dt1_acc"] for r in successful])), 4)
+        agg["dt1_time"] = round(float(np.mean([r["dt1_time"] for r in successful])), 4)
+    else:
+        agg["samples"] = int(np.mean([r["samples"] for r in runs]))
+        agg["features"] = runs[0]["features"]
+        agg["cart_size"] = None
+        agg["cart_acc"] = None
         agg["dt1_size"] = None
-        agg["dt1_test_acc"] = None
+        agg["dt1_acc"] = None
         agg["dt1_time"] = None
-    elif n_timeouts > 0:
+
+    if n_failed == len(runs):
+        agg["status"] = "ALL_TIMEOUT"
+    elif n_failed > 0:
         agg["status"] = "PARTIAL_TIMEOUT"
     else:
         agg["status"] = "OK"
@@ -285,9 +336,9 @@ def write_csv(output_path: str, results: list[dict[str, Any]]) -> None:
         "samples",
         "features",
         "cart_size",
-        "cart_test_acc",
+        "cart_acc",
         "dt1_size",
-        "dt1_test_acc",
+        "dt1_acc",
         "dt1_time",
         "status",
     ]
@@ -311,9 +362,9 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
         "samples",
         "features",
         "cart_size",
-        "cart_test_acc",
+        "cart_acc",
         "dt1_size",
-        "dt1_test_acc",
+        "dt1_acc",
         "dt1_time",
         "status",
     ]
@@ -327,48 +378,102 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
 
 
 def _run_single_worker(
-    X_train_full: np.ndarray,
-    y_train_full: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    dataset: str,
     rate: float,
     run_idx: int,
     timeout: int,
+    n_features: int,
 ) -> dict[str, Any]:
     """Worker function for parallel execution."""
-    return run_single(
-        X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout
-    )
+    return run_single(dataset, rate, run_idx, timeout, n_features)
 
 
 def run_batch_parallel(
-    X_train_full: np.ndarray,
-    y_train_full: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    n_workers: int,
+    dataset: str,
     rate: float,
     batch_size: int,
     timeout: int,
-    n_workers: int,
+    n_features: int,
+    n_full: int,
 ) -> list[dict[str, Any]]:
-    """Run a batch of experiments in parallel using multiprocessing."""
-    args_list = [
-        (X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout)
-        for run_idx in range(batch_size)
+    """Run a batch of experiments in waves with per-run timeout.
+
+    Runs are split into waves of n_workers. Each wave runs in parallel.
+    Use wait() with timeout to ensure all workers complete or timeout together.
+    """
+    results: list[dict[str, Any]] = []
+
+    # Expected samples per run (used for timeout/error results)
+    expected_samples = max(2, int(n_full * rate))
+
+    # Split runs into waves: [0,1,2,3], [4,5,6,7], [8,9]
+    run_indices = list(range(batch_size))
+    waves = [
+        run_indices[i : i + n_workers] for i in range(0, len(run_indices), n_workers)
     ]
 
-    pool = multiprocessing.Pool(processes=n_workers)
-    async_result = pool.starmap_async(_run_single_worker, args_list)
+    vprint(f"batch_size={batch_size}, n_workers={n_workers}, timeout={timeout}")
+    vprint(f"waves={len(waves)}: {waves}")
 
-    try:
-        results = async_result.get()
-    except KeyboardInterrupt:
-        pool.terminate()
-        pool.join()
-        raise KeyboardInterrupt("Experiment interrupted by user")
-    finally:
-        pool.close()
-        pool.join()
+    for wave_idx, wave_runs in enumerate(waves):
+        vprint(f"Starting wave {wave_idx + 1}/{len(waves)}: runs={wave_runs}")
+
+        futures: list[Any] = []
+
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            for run_idx in wave_runs:
+                fut = executor.submit(
+                    _run_single_worker, dataset, rate, run_idx, timeout, n_features
+                )
+                futures.append(fut)
+
+            # Wait for ALL futures: either complete normally or timeout
+            # wait() returns when all done OR timeout reached (whichever first)
+            done, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
+
+            vprint(
+                f"Wave {wave_idx + 1}: {len(done)} done, {len(not_done)} still running"
+            )
+
+        # Collect results: done futures have results, not_done are TIMEOUT
+        for run_idx, fut in enumerate(futures):
+            if fut in done:
+                try:
+                    result = fut.result()
+                    results.append(result)
+                    vprint(
+                        f"Run {run_idx}: OK (status={result.get('status')}, dt1_time={result.get('dt1_time')})"
+                    )
+                except Exception as e:
+                    results.append(
+                        {
+                            "samples": expected_samples,
+                            "features": n_features,
+                            "cart_size": None,
+                            "cart_acc": None,
+                            "dt1_size": None,
+                            "dt1_acc": None,
+                            "dt1_time": None,
+                            "status": f"ERROR: {type(e).__name__}",
+                        }
+                    )
+                    vprint(f"Run {run_idx}: ERROR {type(e).__name__}")
+            else:
+                # Timeout - mark as TIMEOUT (fut still running)
+                results.append(
+                    {
+                        "samples": expected_samples,
+                        "features": n_features,
+                        "cart_size": None,
+                        "cart_acc": None,
+                        "dt1_size": None,
+                        "dt1_acc": None,
+                        "dt1_time": None,
+                        "status": "TIMEOUT",
+                    }
+                )
+                vprint(f"Run {run_idx}: TIMEOUT")
 
     return results
 
@@ -386,33 +491,34 @@ def run_experiment(
     print(f"\n{dataset}")
     print("-" * 80)
 
+    # Load raw data once per dataset to get n_features
+    from scripts.data.pmlb import load_dataset
+
+    X_raw, y_raw = load_dataset(dataset)
+
     from scripts.data.pmlb import preprocess
 
     X_full, y_full = preprocess(
-        *load_and_preprocess(dataset),
+        X_raw,
+        y_raw,
         encode_features="onehot",
-        binarize_labels="ovr",
-        min_feature_freq=0.0,
+        binarize_labels="threshold",
+        binarize_threshold=1,  # unacc=0, acc/good/vgood=1
+        min_feature_freq=0.05,  # Frequency filter on whole dataset
         feature_selection=None,
         ensure_consistent=False,
     )
 
     n_full = len(X_full)
-    n_train = int(n_full * 0.8)
-    n_test = n_full - n_train
     n_features = X_full.shape[1]
 
-    print(
-        f"Full: {n_full} samples, {n_features} features | Train: {n_train} | Test: {n_test}"
-    )
+    print(f"Full: {n_full} samples, {n_features} features")
 
-    X_train_full, X_test, y_train_full, y_test = train_test_split(
-        X_full, y_full, train_size=0.8, random_state=42
-    )
-
+    # Compute column widths based on max possible samples (highest rate) for consistent table
+    max_samples = max(2, int(n_full * rates[-1]))
     from scripts.table import compute_column_widths, print_header
 
-    widths = compute_column_widths(n_train, n_features)
+    widths = compute_column_widths(max_samples, n_features)
     print_header(widths)
 
     all_runs: list[dict[str, Any]] = []
@@ -420,14 +526,14 @@ def run_experiment(
 
     for rate in rates:
         if prev_all_timeout:
-            n_samples = max(2, int(len(X_train_full) * rate))
+            n_samples = max(2, int(n_full * rate))
             agg = {
                 "samples": n_samples,
-                "features": X_train_full.shape[1],
+                "features": n_features,
                 "cart_size": None,
-                "cart_test_acc": None,
+                "cart_acc": None,
                 "dt1_size": None,
-                "dt1_test_acc": None,
+                "dt1_acc": None,
                 "dt1_time": None,
                 "status": "SKIPPED",
             }
@@ -437,11 +543,11 @@ def run_experiment(
                     "rate": rate,
                     "run": run_idx + 1,
                     "samples": n_samples,
-                    "features": X_train_full.shape[1],
+                    "features": n_features,
                     "cart_size": None,
-                    "cart_test_acc": None,
+                    "cart_acc": None,
                     "dt1_size": None,
-                    "dt1_test_acc": None,
+                    "dt1_acc": None,
                     "dt1_time": None,
                     "status": "SKIPPED",
                 }
@@ -449,16 +555,18 @@ def run_experiment(
             print_batch_summary(rate, agg, widths)
             continue
 
+        vprint(f"Starting batch: rate={rate}")
+
         runs = run_batch_parallel(
-            X_train_full,
-            y_train_full,
-            X_test,
-            y_test,
+            n_workers,
+            dataset,
             rate,
             batch_size,
             timeout,
-            n_workers,
+            n_features,
+            n_full,
         )
+
         for result in runs:
             result["dataset"] = dataset
             result["rate"] = rate
@@ -484,9 +592,9 @@ def run_experiment(
                     "samples": rate_runs[0]["samples"],
                     "features": rate_runs[0]["features"],
                     "cart_size": None,
-                    "cart_test_acc": None,
+                    "cart_acc": None,
                     "dt1_size": None,
-                    "dt1_test_acc": None,
+                    "dt1_acc": None,
                     "dt1_time": None,
                     "status": "SKIPPED",
                 }
@@ -507,11 +615,11 @@ def main() -> None:
     timeout = DEV_TIMEOUT if args.dev else args.timeout
     output_path = args.output if args.output is not None else default_output_path()
     per_run = args.per_run
+    global VERBOSE
+    VERBOSE = args.verbose
     n_workers = (
-        args.worker_threads
-        if args.worker_threads is not None
-        else multiprocessing.cpu_count()
-    )
+        args.worker_threads if args.worker_threads is not None else os.cpu_count()
+    ) or 1
 
     print(f"Datasets: {', '.join(datasets)}")
     print(f"Rates: {rates}")
@@ -520,13 +628,25 @@ def main() -> None:
     print(f"Worker threads: {n_workers}")
     print(f"Output: {output_path}")
     print(f"Mode: {'per-run' if per_run else 'aggregated'}")
+    print(f"Verbose: {VERBOSE}")
 
-    for dataset in datasets:
-        run_experiment(
-            dataset, rates, batch_size, timeout, output_path, per_run, n_workers
-        )
+    try:
+        for dataset in datasets:
+            run_experiment(
+                dataset,
+                rates,
+                batch_size,
+                timeout,
+                output_path,
+                per_run,
+                n_workers,
+            )
+    except KeyboardInterrupt:
+        print("\nAborted.")
+        return
 
     print("\nDone.")
+    os._exit(0)  # Force exit to avoid threading cleanup hang
 
 
 if __name__ == "__main__":

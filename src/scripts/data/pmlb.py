@@ -11,6 +11,7 @@ from scripts.data.preprocessing import (
     make_consistent,
     one_hot_encode,
     select_k_best,
+    ThresholdLabelBinarizer,
 )
 
 
@@ -39,6 +40,7 @@ def preprocess(
     *,
     encode_features: str = "onehot",
     binarize_labels: str = "ovr",
+    binarize_threshold: int = 1,
     min_feature_freq: float = 0.05,
     feature_selection: str | None = "kbest",
     n_features: int | None = None,
@@ -51,7 +53,8 @@ def preprocess(
         features: Raw feature matrix (will be encoded if encode_features != "none")
         labels: Raw labels (will be binarized if binarize_labels != "none")
         encode_features: "onehot" to one-hot encode, "none" to skip
-        binarize_labels: "ovr" for one-vs-rest, "none" to skip
+        binarize_labels: "ovr" for one-vs-rest, "threshold" for threshold grouping
+        binarize_threshold: Threshold for threshold grouping (labels >= threshold → 1)
         min_feature_freq: Minimum feature frequency for filtering
         feature_selection: "kbest" to select top k features, or None
         n_features: Number of features to keep (if feature_selection="kbest")
@@ -67,6 +70,10 @@ def preprocess(
     # Step 2: Binarize labels
     if binarize_labels == "ovr":
         labels, _ = binarize_labels_ovr(labels)
+    elif binarize_labels == "threshold":
+        binarizer = ThresholdLabelBinarizer(threshold=binarize_threshold)
+        binarizer.fit(labels)
+        labels = binarizer.transform(labels)
 
     # Step 3: Filter by frequency (remove rare or too-common features)
     if min_feature_freq > 0:
@@ -88,6 +95,7 @@ def load_and_preprocess(
     *,
     encode_features: str = "onehot",
     binarize_labels: str = "ovr",
+    binarize_threshold: int = 1,
     min_feature_freq: float = 0.05,
     feature_selection: str | None = "kbest",
     n_features: int | None = None,
@@ -100,7 +108,8 @@ def load_and_preprocess(
         dataset_name: Name of the PMLB dataset
         random_state: Random seed for reproducibility
         encode_features: "onehot" to encode, "none" to skip
-        binarize_labels: "ovr" for one-vs-rest, "none" to skip
+        binarize_labels: "ovr" for one-vs-rest, "threshold" for threshold grouping
+        binarize_threshold: Threshold for threshold grouping (labels >= threshold → 1)
         min_feature_freq: Minimum feature frequency for filtering
         feature_selection: "kbest" to select top k features, or None
         n_features: Number of features to keep (if feature_selection="kbest")
@@ -116,6 +125,7 @@ def load_and_preprocess(
         labels,
         encode_features=encode_features,
         binarize_labels=binarize_labels,
+        binarize_threshold=binarize_threshold,
         min_feature_freq=min_feature_freq,
         feature_selection=feature_selection,
         n_features=n_features,
