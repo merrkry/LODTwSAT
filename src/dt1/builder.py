@@ -127,10 +127,16 @@ def _build_dt_from_fixed_size(
             if j % 2 == 0:
                 yield j
 
+    def in_LR(i: int, j: int) -> bool:
+        return j in range(i + 1, min(2 * i, size - 1) + 1) and j % 2 == 0
+
     def gen_RR(i: int) -> collections.abc.Iterator[int]:
         for j in range(i + 2, min(2 * i + 1, size) + 1):
             if j % 2 == 1:
                 yield j
+
+    def in_RR(i: int, j: int) -> bool:
+        return j in range(i + 2, min(2 * i + 1, size) + 1) and j % 2 == 1
 
     def gen_P(i: int) -> collections.abc.Iterator[int]:
         # We tighten the upperbound a bit more strict than the paper,
@@ -138,6 +144,9 @@ def _build_dt_from_fixed_size(
         # Like `p(3, 2)`.
         for j in range(max(i // 2, 1), min(i if i % 2 == 0 else i - 1, size)):
             yield j
+
+    def in_P(i: int, j: int) -> bool:
+        return in_LR(j, i) or in_RR(j, i)
 
     # In `gen_LR` and `gen_RR`, we only enumerate on a subset of all nodes to reduce encoding size when build structural constraints.
     # However, in constraint (7) for example, some trivially invalid combinations, like `r(2, 3)` are still accessed just like in `gen_P`.
@@ -221,14 +230,8 @@ def _build_dt_from_fixed_size(
                 iff(
                     var("d", r, j, 0),
                     nnf.Or(
-                        [
-                            inner
-                            for i in gen_P(j)
-                            for inner in (
-                                (var("p", j, i) & var("d", r, i, 0)),
-                                (var("a", r, i) & var("r", i, j)),
-                            )
-                        ]
+                        [(var("p", j, i) & var("d", r, i, 0)) for i in gen_P(j)]
+                        + [(var("a", r, i) & var("r", i, j)) for i in gen_P(j)]
                     ),
                 )
                 for j in range(2, size + 1)
@@ -335,6 +338,36 @@ def _build_dt_from_fixed_size(
                     for j in range(1, size + 1)
                 ]
             )
+
+    # Additional inference constraints as in section 3.3 of the paper
+    for i in range(1, size + 1):
+        append_formula(var("lambda", 0, i))
+        for t in range(1, i // 2 + 1):
+            append_formula(
+                iff(
+                    var("lambda", t, i),
+                    var("lambda", t, i - 1)
+                    | (var("lambda", t - 1, i - 1) & var("v", i)),
+                )
+            )
+            append_formula(implies(var("lambda", t, i), ~var("l", i, 2 * (i - t + 1))))
+            append_formula(
+                implies(var("lambda", t, i), ~var("r", i, 2 * (i - t + 1) + 1))
+            )
+    for i in range(1, size + 1):
+        append_formula(var("tau", 0, i))
+        for t in range(1, i + 1):
+            append_formula(
+                iff(
+                    var("tau", t, i),
+                    var("tau", t, i - 1) | (var("tau", t - 1, i - 1) & ~var("v", i)),
+                )
+            )
+        for t in range(i - (i // 2) + 1, i + 1):
+            if in_LR(i, 2 * (t - 1)):
+                append_formula(implies(var("tau", t, i), ~var("l", i, 2 * (t - 1))))
+            if in_RR(i, 2 * t - 1):
+                append_formula(implies(var("tau", t, i), ~var("r", i, 2 * t - 1)))
 
     # === End Phase 1: Encoding / Start Phase 2: Processing ===
     encoding_time = time.time() - start_encoding
@@ -444,14 +477,18 @@ def _build_dt_from_fixed_size(
             if not isinstance(var_args, tuple):
                 continue
             var_args = typing.cast(tuple[str, ...], var_args)
+            # Some times we may access trivially invalid combinations, like out of range indices,
+            # their values can be arbitrary, we should ignore such assignments.
             if var_args[0] == "l" and assignment:
                 i = int(var_args[1])
                 j = int(var_args[2])
-                left[i] = j
+                if i in range(1, size + 1) and j in range(1, size + 1):
+                    left[i] = j
             elif var_args[0] == "r" and assignment:
                 i = int(var_args[1])
                 j = int(var_args[2])
-                right[i] = j
+                if i in range(1, size + 1) and j in range(1, size + 1):
+                    right[i] = j
             elif var_args[0] == "a" and assignment:
                 r = int(var_args[1])
                 j = int(var_args[2])
