@@ -197,7 +197,6 @@ def run_single(
         y_raw,
         encode_features="onehot",
         binarize_labels="threshold",
-        binarize_threshold=1,  # unacc=0, acc/good/vgood=1
         min_feature_freq=0.05,  # Filter on whole dataset
         feature_selection=None,
         ensure_consistent=False,
@@ -503,7 +502,6 @@ def run_experiment(
         y_raw,
         encode_features="onehot",
         binarize_labels="threshold",
-        binarize_threshold=1,  # unacc=0, acc/good/vgood=1
         min_feature_freq=0.05,  # Frequency filter on whole dataset
         feature_selection=None,
         ensure_consistent=False,

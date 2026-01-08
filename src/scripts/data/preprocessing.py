@@ -7,21 +7,57 @@ from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from sklearn.preprocessing import OneHotEncoder
 
 
-class ThresholdLabelBinarizer:
-    """Binarize labels using threshold grouping: label >= threshold → 1, else 0."""
+class MedianThresholdLabelBinarizer:
+    """Binarize categorical labels using split closest to 50/50.
 
-    def __init__(self, threshold: int = 1):
-        self.threshold = threshold
-        self.positive_class_: int | None = None
+    For categorical labels (e.g., "unacc", "acc", "good", "vgood"),
+    finds the binary partition where positive/negative frequencies are
+    closest to 50/50.
 
-    def fit(self, labels: np.ndarray) -> "ThresholdLabelBinarizer":
-        """Store threshold and determine positive class indicator."""
-        self.positive_class_ = self.threshold
+    Algorithm:
+        1. Get all unique labels and their counts
+        2. Try all possible binary partitions (2^(n-1) for n classes)
+        3. Pick partition where |freq_positive - 0.5| is minimized
+        4. Labels in positive group → 1, else 0
+
+    This works for any categorical labels without assumptions.
+    """
+
+    def __init__(self):
+        self.positive_labels_: list | None = None
+        self.split_ratio_: float | None = None
+
+    def fit(self, labels: np.ndarray) -> "MedianThresholdLabelBinarizer":
+        """Find binary split closest to 50/50."""
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        n_classes = len(unique_labels)
+        n_total = len(labels)
+
+        best_diff = float("inf")
+        best_positive_labels: list = []
+
+        # For n classes, iterate through all non-empty, non-full subsets
+        # Use bitmask: class i is positive if bit i is set
+        for mask in range(1, (1 << n_classes) - 1):
+            positive_count = sum(counts[i] for i in range(n_classes) if mask & (1 << i))
+            ratio = positive_count / n_total
+            diff = abs(ratio - 0.5)
+
+            if diff < best_diff:
+                best_diff = diff
+                best_positive_labels = [
+                    unique_labels[i] for i in range(n_classes) if mask & (1 << i)
+                ]
+                self.split_ratio_ = ratio
+
+        self.positive_labels_ = best_positive_labels
         return self
 
     def transform(self, labels: np.ndarray) -> np.ndarray:
-        """Convert labels to binary: (labels >= threshold) → 1."""
-        return (labels >= self.threshold).astype(bool)
+        """Convert labels to binary: label in positive group → 1."""
+        if self.positive_labels_ is None:
+            raise RuntimeError("Must call fit() before transform()")
+        return np.isin(labels, self.positive_labels_)
 
 
 def binarize_labels_ovr(

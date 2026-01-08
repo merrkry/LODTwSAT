@@ -46,15 +46,11 @@ def print_header(widths: dict[str, int]) -> None:
 def print_batch_row(rate: float, agg: dict[str, Any], widths: dict[str, int]) -> None:
     """Print a single batch row."""
     dt1_size_str = f"{agg['dt1_size']:.1f}" if agg["dt1_size"] is not None else "-"
-    dt1_acc_str = (
-        f"{agg['dt1_acc']:.4f}" if agg["dt1_acc"] is not None else "-"
-    )
+    dt1_acc_str = f"{agg['dt1_acc']:.4f}" if agg["dt1_acc"] is not None else "-"
     dt1_time_str = f"{agg['dt1_time']:.4f}" if agg["dt1_time"] is not None else "-"
 
     cart_size_str = f"{int(agg['cart_size'])}" if agg["cart_size"] is not None else "-"
-    cart_acc_str = (
-        f"{agg['cart_acc']:.4f}" if agg["cart_acc"] is not None else "-"
-    )
+    cart_acc_str = f"{agg['cart_acc']:.4f}" if agg["cart_acc"] is not None else "-"
 
     status = agg.get("status", "")
 
