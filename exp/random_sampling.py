@@ -67,6 +67,27 @@ def default_output_path() -> str:
     return f"output/{timestamp}.csv"
 
 
+def parse_rates(rates_str: str | None, range_str: str | None) -> list[float]:
+    """Parse sampling rates from comma-separated string or range string."""
+    if range_str is not None:
+        parts = range_str.split(":")
+        if len(parts) != 3:
+            raise ValueError(
+                f"Invalid rates range: {range_str}. Use start:end:step format."
+            )
+        start, end, step = float(parts[0]), float(parts[1]), float(parts[2])
+        rates = []
+        r = start
+        while r <= end + 1e-9:
+            rates.append(round(r, 4))
+            r += step
+        return rates
+
+    if rates_str is None:
+        return [float(r.strip()) for r in DEFAULT_RATES.split(",")]
+    return [float(r.strip()) for r in rates_str.split(",")]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Random sampling experiment: CART vs DT1 comparison"
@@ -82,6 +103,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_RATES,
         help=f"Comma-separated sampling rates (default: {DEFAULT_RATES})",
+    )
+    parser.add_argument(
+        "--rates-range",
+        type=str,
+        default=None,
+        help="Sampling rates as start:end:step (e.g., 0.01:0.10:0.01)",
     )
     parser.add_argument(
         "--batch-size",
@@ -475,7 +502,7 @@ def main() -> None:
     args = parse_args()
 
     datasets = [d.strip() for d in args.datasets.split(",")]
-    rates = [float(r.strip()) for r in args.rates.split(",")]
+    rates = parse_rates(args.rates, args.rates_range)
     batch_size = 2 if args.dev else args.batch_size
     timeout = DEV_TIMEOUT if args.dev else args.timeout
     output_path = args.output if args.output is not None else default_output_path()
