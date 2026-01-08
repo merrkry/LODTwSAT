@@ -239,7 +239,9 @@ def aggregate_batch(runs: list[dict[str, Any]]) -> dict[str, Any]:
     return agg
 
 
-def print_batch_summary(rate: float, agg: dict[str, Any], widths: dict[str, int]) -> None:
+def print_batch_summary(
+    rate: float, agg: dict[str, Any], widths: dict[str, int]
+) -> None:
     """Print batch summary to stdout."""
     print_batch_row(rate, agg, widths)
 
@@ -277,10 +279,15 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
     path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
-        "dataset", "rate",
-        "samples", "features",
-        "cart_size", "cart_test_acc",
-        "dt1_size", "dt1_test_acc", "dt1_time",
+        "dataset",
+        "rate",
+        "samples",
+        "features",
+        "cart_size",
+        "cart_test_acc",
+        "dt1_size",
+        "dt1_test_acc",
+        "dt1_time",
         "status",
     ]
 
@@ -302,7 +309,9 @@ def _run_single_worker(
     timeout: int,
 ) -> dict[str, Any]:
     """Worker function for parallel execution."""
-    return run_single(X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout)
+    return run_single(
+        X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout
+    )
 
 
 def run_batch_parallel(
@@ -320,8 +329,20 @@ def run_batch_parallel(
         (X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout)
         for run_idx in range(batch_size)
     ]
-    with multiprocessing.Pool(processes=n_workers) as pool:
-        results = pool.starmap(_run_single_worker, args_list)
+
+    pool = multiprocessing.Pool(processes=n_workers)
+    async_result = pool.starmap_async(_run_single_worker, args_list)
+
+    try:
+        results = async_result.get()
+    except KeyboardInterrupt:
+        pool.terminate()
+        pool.join()
+        raise KeyboardInterrupt("Experiment interrupted by user")
+    finally:
+        pool.close()
+        pool.join()
+
     return results
 
 
@@ -402,8 +423,14 @@ def run_experiment(
             continue
 
         runs = run_batch_parallel(
-            X_train_full, y_train_full, X_test, y_test,
-            rate, batch_size, timeout, n_workers
+            X_train_full,
+            y_train_full,
+            X_test,
+            y_test,
+            rate,
+            batch_size,
+            timeout,
+            n_workers,
         )
         for result in runs:
             result["dataset"] = dataset
@@ -453,7 +480,11 @@ def main() -> None:
     timeout = DEV_TIMEOUT if args.dev else args.timeout
     output_path = args.output if args.output is not None else default_output_path()
     per_run = args.per_run
-    n_workers = args.worker_threads if args.worker_threads is not None else multiprocessing.cpu_count()
+    n_workers = (
+        args.worker_threads
+        if args.worker_threads is not None
+        else multiprocessing.cpu_count()
+    )
 
     print(f"Datasets: {', '.join(datasets)}")
     print(f"Rates: {rates}")
@@ -464,7 +495,9 @@ def main() -> None:
     print(f"Mode: {'per-run' if per_run else 'aggregated'}")
 
     for dataset in datasets:
-        run_experiment(dataset, rates, batch_size, timeout, output_path, per_run, n_workers)
+        run_experiment(
+            dataset, rates, batch_size, timeout, output_path, per_run, n_workers
+        )
 
     print("\nDone.")
 
