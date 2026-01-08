@@ -34,6 +34,7 @@ def _train_dt1_worker(
             y_train,
             max_size=max_size,
             timeout=timeout,
+            solver="cadical195",
             verbose=verbose,
         )
         elapsed = time.time() - start
