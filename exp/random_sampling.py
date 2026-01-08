@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import multiprocessing
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -110,6 +111,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Output per-run CSV instead of aggregated per-batch",
+    )
+    parser.add_argument(
+        "--worker-threads",
+        type=int,
+        default=None,
+        help="Number of worker threads for parallel execution (default: CPU cores)",
     )
     return parser.parse_args()
 
@@ -285,6 +292,39 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
     print(f"\nResults written to {path}")
 
 
+def _run_single_worker(
+    X_train_full: np.ndarray,
+    y_train_full: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    rate: float,
+    run_idx: int,
+    timeout: int,
+) -> dict[str, Any]:
+    """Worker function for parallel execution."""
+    return run_single(X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout)
+
+
+def run_batch_parallel(
+    X_train_full: np.ndarray,
+    y_train_full: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    rate: float,
+    batch_size: int,
+    timeout: int,
+    n_workers: int,
+) -> list[dict[str, Any]]:
+    """Run a batch of experiments in parallel using multiprocessing."""
+    args_list = [
+        (X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout)
+        for run_idx in range(batch_size)
+    ]
+    with multiprocessing.Pool(processes=n_workers) as pool:
+        results = pool.starmap(_run_single_worker, args_list)
+    return results
+
+
 def run_experiment(
     dataset: str,
     rates: list[float],
@@ -292,6 +332,7 @@ def run_experiment(
     timeout: int,
     output_path: str,
     per_run: bool = False,
+    n_workers: int = 1,
 ) -> None:
     """Run the full experiment for one dataset."""
     print(f"\n{dataset}")
@@ -360,15 +401,13 @@ def run_experiment(
             print_batch_summary(rate, agg, widths)
             continue
 
-        runs: list[dict[str, Any]] = []
-        for run_idx in range(batch_size):
-            result = run_single(
-                X_train_full, y_train_full, X_test, y_test, rate, run_idx, timeout
-            )
+        runs = run_batch_parallel(
+            X_train_full, y_train_full, X_test, y_test,
+            rate, batch_size, timeout, n_workers
+        )
+        for result in runs:
             result["dataset"] = dataset
             result["rate"] = rate
-            result["run"] = run_idx + 1
-            runs.append(result)
             all_runs.append(result)
 
         agg = aggregate_batch(runs)
@@ -414,16 +453,18 @@ def main() -> None:
     timeout = DEV_TIMEOUT if args.dev else args.timeout
     output_path = args.output if args.output is not None else default_output_path()
     per_run = args.per_run
+    n_workers = args.worker_threads if args.worker_threads is not None else multiprocessing.cpu_count()
 
     print(f"Datasets: {', '.join(datasets)}")
     print(f"Rates: {rates}")
     print(f"Batch size: {batch_size}")
     print(f"Timeout per DT1 run: {timeout}s")
+    print(f"Worker threads: {n_workers}")
     print(f"Output: {output_path}")
     print(f"Mode: {'per-run' if per_run else 'aggregated'}")
 
     for dataset in datasets:
-        run_experiment(dataset, rates, batch_size, timeout, output_path, per_run)
+        run_experiment(dataset, rates, batch_size, timeout, output_path, per_run, n_workers)
 
     print("\nDone.")
 
