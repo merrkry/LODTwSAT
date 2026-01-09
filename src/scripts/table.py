@@ -11,7 +11,7 @@ def compute_column_widths(
     w_n_total: int = 4,
     w_n_optimal: int = 4,
     w_n_fail: int = 4,
-    w_cart: int = 5,
+    w_cart: int = 6,
     w_dt1: int = 5,
     w_cart_acc: int = 8,
     w_dt1_acc: int = 8,
@@ -58,7 +58,7 @@ def print_batch_row(rate: float, agg: dict[str, Any], widths: dict[str, int]) ->
     dt1_acc_str = f"{agg['dt1_acc']:.4f}" if agg["dt1_acc"] is not None else "-"
     dt1_time_str = f"{agg['dt1_time']:.4f}" if agg["dt1_time"] is not None else "-"
 
-    cart_size_str = f"{int(agg['cart_size'])}" if agg["cart_size"] is not None else "-"
+    cart_size_str = f"{agg['cart_size']:.1f}" if agg["cart_size"] is not None else "-"
     cart_acc_str = f"{agg['cart_acc']:.4f}" if agg["cart_acc"] is not None else "-"
 
     n_total = agg.get("n_total", 0)
