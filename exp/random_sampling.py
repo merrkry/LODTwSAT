@@ -225,12 +225,7 @@ def run_single(
 
     samples = len(X_train)
 
-    # Step 5: Train CART (same training set as DT1)
-    cart_result = train_sklearn_dt(X_train, y_train, X_test, y_test)
-    cart_size = cart_result.n_nodes
-    cart_acc = cart_result.test_accuracy
-
-    # Step 6: Train DT1 with timeout, assert 100% training accuracy
+    # Step 5: Train DT1 with timeout, assert 100% training accuracy
     dt1_status = "OK"
     dt1_size: int | None = None
     dt1_acc: float | None = None
@@ -266,6 +261,14 @@ def run_single(
         raise AssertionError(f"DT1 train accuracy: {e}")
     except Exception as e:
         raise RuntimeError(f"DT1 error: {type(e).__name__}: {e}")
+
+    # Step 6: Only train CART if DT1 returned a valid tree (for fair comparison)
+    cart_size: int | None = None
+    cart_acc: float | None = None
+    if dt1_size is not None:
+        cart_result = train_sklearn_dt(X_train, y_train, X_test, y_test)
+        cart_size = cart_result.n_nodes
+        cart_acc = cart_result.test_accuracy
 
     cart_acc_rounded = round(cart_acc, 4) if cart_acc is not None else None
     dt1_acc_rounded = round(dt1_acc, 4) if dt1_acc is not None else None
