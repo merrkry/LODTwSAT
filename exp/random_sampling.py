@@ -377,7 +377,12 @@ def write_csv(output_path: str, results: list[dict[str, Any]]) -> None:
     print(f"\nResults written to {path}")
 
 
-def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> None:
+def write_csv_aggregated(
+    output_path: str,
+    results: list[dict[str, Any]],
+    mode: str = "w",
+    metadata: list[str] | None = None,
+) -> None:
     """Write aggregated batch results to CSV file."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -398,12 +403,17 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
         "status",
     ]
 
-    with open(path, "w", newline="") as f:
+    with open(path, mode, newline="") as f:
+        # Write metadata as comments if provided
+        if metadata:
+            for line in metadata:
+                f.write(f"# {line}\n")
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
+        if mode == "w":
+            writer.writeheader()
         writer.writerows(results)
 
-    print(f"\nResults written to {path}")
+    print(f"Results written to {path}")
 
 
 def _run_single_worker(
@@ -521,6 +531,7 @@ def run_experiment(
     output_path: str,
     per_run: bool = False,
     n_workers: int = 1,
+    metadata: list[str] | None = None,
 ) -> None:
     """Run the full experiment for one dataset."""
     print(f"\n{dataset}")
@@ -609,35 +620,25 @@ def run_experiment(
         agg = aggregate_batch(runs)
         print_batch_summary(rate, agg, widths)
 
-        prev_all_timeout = agg["status"] == "ALL_TIMEOUT"
-
-    if per_run:
-        write_csv(output_path, all_runs)
-    else:
-        aggregated = []
-        for rate in rates:
+        # Write incrementally after each batch
+        if per_run:
+            write_csv(output_path, all_runs)
+        else:
+            # Build aggregated for this rate only
             rate_runs = [r for r in all_runs if r["rate"] == rate]
-            if not rate_runs:
-                continue
-            if rate_runs[0].get("status") == "SKIPPED":
-                agg = {
-                    "dataset": dataset,
-                    "rate": rate,
-                    "samples": rate_runs[0]["samples"],
-                    "features": rate_runs[0]["features"],
-                    "cart_size": None,
-                    "cart_acc": None,
-                    "dt1_size": None,
-                    "dt1_acc": None,
-                    "dt1_time": None,
-                    "status": "SKIPPED",
-                }
-            else:
-                agg = aggregate_batch(rate_runs)
-                agg["dataset"] = dataset
-                agg["rate"] = rate
-            aggregated.append(agg)
-        write_csv_aggregated(output_path, aggregated)
+            rate_agg = aggregate_batch(rate_runs)
+            rate_agg["dataset"] = dataset
+            rate_agg["rate"] = rate
+            # Write metadata on first batch, append without metadata on subsequent
+            first_write = rate == rates[0]
+            write_csv_aggregated(
+                output_path,
+                [rate_agg],
+                mode="w" if first_write else "a",
+                metadata=metadata if first_write else None,
+            )
+
+        prev_all_timeout = agg["status"] == "ALL_TIMEOUT"
 
 
 def main() -> None:
@@ -655,14 +656,20 @@ def main() -> None:
         args.worker_threads if args.worker_threads is not None else os.cpu_count()
     ) or 1
 
-    print(f"Datasets: {', '.join(datasets)}")
-    print(f"Rates: {rates}")
-    print(f"Batch size: {batch_size}")
-    print(f"Timeout per DT1 run: {timeout}s")
-    print(f"Worker threads: {n_workers}")
-    print(f"Output: {output_path}")
-    print(f"Mode: {'per-run' if per_run else 'aggregated'}")
-    print(f"Verbose: {VERBOSE}")
+    # Metadata for CSV header (same as stdout output)
+    metadata = [
+        f"Datasets: {', '.join(datasets)}",
+        f"Rates: {rates}",
+        f"Batch size: {batch_size}",
+        f"Timeout per DT1 run: {timeout}s",
+        f"Worker threads: {n_workers}",
+        f"Output: {output_path}",
+        f"Mode: {'per-run' if per_run else 'aggregated'}",
+        f"Verbose: {VERBOSE}",
+    ]
+
+    for line in metadata:
+        print(line)
 
     for dataset in datasets:
         run_experiment(
@@ -673,6 +680,7 @@ def main() -> None:
             output_path,
             per_run,
             n_workers,
+            metadata if not per_run else None,
         )
 
     print("\nDone.")
