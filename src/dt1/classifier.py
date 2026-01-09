@@ -1,6 +1,6 @@
 import numpy
 
-from dt1.builder import BuildResult, build_dt1_classifier
+from dt1.builder import BuildResult, TimeoutBehavior, build_dt1_classifier
 from dt1.exceptions import (
     InvalidTestSetError,
     InvalidTrainingSetError,
@@ -46,6 +46,7 @@ class DT1Classifier:
         timeout: float | None = None,
         solver: str = "glucose3",
         verbose: bool = False,
+        timeout_behavior: TimeoutBehavior = TimeoutBehavior.ERROR,
     ) -> None:
         """
         Initialize and train a DT1 classifier.
@@ -55,13 +56,15 @@ class DT1Classifier:
             labels: training labels (binary vector)
             max_size: upper bound of decision tree size.
                 If None, scikit's decision tree builder will be called for upper bound approximation.
-            timeout: timeout for SAT solver in seconds (default: 60)
+            timeout: total timeout in seconds (default: 60)
             solver: name of SAT solver to use (default: "glucose3")
             verbose: if True, print progress information
+            timeout_behavior: behavior when timeout is reached (default: ERROR)
 
         Raises:
             InvalidTrainingSetError: if features/labels mismatch or inconsistent dataset
-            UpperBoundTooStrictError: if user-provided max_size is too strict
+            UpperBoundTooStrictError: if user-provided max_size is too strict or
+                timeout is reached with no valid tree (when timeout_behavior is ERROR)
         """
         if features.shape[0] != labels.shape[0]:
             raise InvalidTrainingSetError(
@@ -74,7 +77,13 @@ class DT1Classifier:
         self._n_features = features.shape[1]
 
         result = build_dt1_classifier(
-            features, labels, max_size, timeout=timeout, solver=solver, verbose=verbose
+            features,
+            labels,
+            max_size,
+            timeout=timeout,
+            solver=solver,
+            verbose=verbose,
+            timeout_behavior=timeout_behavior,
         )
         self._decision_tree = result.tree
         self._build_result = result  # Store for access to timing info

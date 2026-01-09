@@ -8,6 +8,9 @@ def compute_column_widths(
     max_features: int,
     *,
     w_rate: int = 5,
+    w_n_total: int = 4,
+    w_n_optimal: int = 4,
+    w_n_fail: int = 4,
     w_cart: int = 5,
     w_dt1: int = 5,
     w_cart_acc: int = 8,
@@ -17,6 +20,9 @@ def compute_column_widths(
     """Compute column widths based on max values and header lengths."""
     return {
         "rate": max(w_rate, len("0.01")),
+        "n_total": max(w_n_total, len("tot")),
+        "n_optimal": max(w_n_optimal, len("opt")),
+        "n_fail": max(w_n_fail, len("fail")),
         "n": max(len(str(max_samples)), len("n")),
         "f": max(len(str(max_features)), len("f")),
         "cart": max(w_cart, len("n_CART")),
@@ -31,6 +37,9 @@ def print_header(widths: dict[str, int]) -> None:
     """Print table header."""
     print(
         f"{'r':^{widths['rate']}} | "
+        f"{'tot':^{widths['n_total']}} | "
+        f"{'opt':^{widths['n_optimal']}} | "
+        f"{'fail':^{widths['n_fail']}} | "
         f"{'n':^{widths['n']}} | "
         f"{'f':^{widths['f']}} | "
         f"{'n_CART':^{widths['cart']}} | "
@@ -39,7 +48,7 @@ def print_header(widths: dict[str, int]) -> None:
         f"{'DT1_acc':^{widths['dt1_acc']}} | "
         f"{'time':^{widths['time']}} |"
     )
-    total_width = sum(widths.values()) + 7 * 3 + 8
+    total_width = sum(widths.values()) + 10 * 3 + 10
     print("-" * total_width)
 
 
@@ -52,10 +61,17 @@ def print_batch_row(rate: float, agg: dict[str, Any], widths: dict[str, int]) ->
     cart_size_str = f"{int(agg['cart_size'])}" if agg["cart_size"] is not None else "-"
     cart_acc_str = f"{agg['cart_acc']:.4f}" if agg["cart_acc"] is not None else "-"
 
+    n_total = agg.get("n_total", 0)
+    n_optimal = agg.get("n_optimal", 0)
+    n_fail = agg.get("n_fail", 0)
+
     status = agg.get("status", "")
 
     print(
         f"{rate:>{widths['rate']}.2f} | "
+        f"{n_total:>{widths['n_total']}} | "
+        f"{n_optimal:>{widths['n_optimal']}} | "
+        f"{n_fail:>{widths['n_fail']}} | "
         f"{agg['samples']:>{widths['n']}} | "
         f"{agg['features']:>{widths['f']}} | "
         f"{cart_size_str:>{widths['cart']}} | "

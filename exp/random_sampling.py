@@ -47,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from scripts.data.preprocessing import filter_by_frequency, make_consistent
-from scripts.training.dt1 import DT1Timeout, train_dt1
+from scripts.training.dt1 import train_dt1
 from scripts.training.sklearn_dt import train_sklearn_dt
 from scripts.table import print_batch_row
 
@@ -235,10 +235,26 @@ def run_single(
     dt1_size: int | None = None
     dt1_acc: float | None = None
     dt1_time: float | None = None
+    dt1_optimal: bool = False
 
     try:
-        dt1_result = train_dt1(X_train, y_train, X_test, y_test, timeout=timeout)
+        from dt1 import TimeoutBehavior
+
+        dt1_result = train_dt1(
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            timeout=timeout,
+            timeout_behavior=TimeoutBehavior.RETURN_TREE,
+        )
         dt1_time = dt1_result.elapsed
+
+        # Check if we had an optimal build (no timeout in any size attempt)
+        timings = dt1_result.build_result.timings
+        if timings:
+            last_timing = timings[-1]
+            dt1_optimal = last_timing.status not in ("TIMEOUT", "ERROR")
 
         assert dt1_result.train_accuracy == 1.0, (
             f"DT1 train accuracy is {dt1_result.train_accuracy}, expected 1.0"
@@ -246,9 +262,6 @@ def run_single(
 
         dt1_size = dt1_result.n_nodes
         dt1_acc = dt1_result.test_accuracy
-    except DT1Timeout:
-        dt1_status = "TIMEOUT"
-        dt1_time = timeout
     except AssertionError as e:
         raise AssertionError(f"DT1 train accuracy: {e}")
     except Exception as e:
@@ -266,6 +279,7 @@ def run_single(
         "dt1_size": dt1_size,
         "dt1_acc": dt1_acc_rounded,
         "dt1_time": dt1_time_rounded,
+        "dt1_optimal": dt1_optimal,
         "status": dt1_status,
     }
 
@@ -273,30 +287,38 @@ def run_single(
 def aggregate_batch(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate per-run results into batch statistics.
 
-    Only successful runs (status == "OK") are included in averages.
-    Both CART and DT1 metrics are excluded when DT1 times out.
-
-    Status logic:
-    - OK: all runs completed successfully
-    - PARTIAL_TIMEOUT: some runs timed out or errored
-    - ALL_TIMEOUT: all runs timed out or errored
+    Averages are computed on runs with valid trees (dt1_size is not None).
+    Metrics:
+    - n_total: total runs in batch
+    - n_optimal: runs that completed all sizes without timeout
+    - n_fail: runs that never found a valid tree
+    - dt1_size, dt1_acc, dt1_time: averages over runs with valid trees
     """
     agg: dict[str, Any] = {}
 
-    # Count runs that didn't complete DT1 successfully
-    n_failed = sum(1 for r in runs if r["status"] in ("TIMEOUT", "ERROR"))
+    n_total = len(runs)
+    agg["n_total"] = n_total
 
-    # Only successful runs are included in averages
-    successful = [r for r in runs if r["status"] == "OK"]
+    # Runs with valid trees (returned a tree, regardless of optimality)
+    has_tree = [r for r in runs if r["dt1_size"] is not None]
 
-    if successful:
-        agg["samples"] = int(np.mean([r["samples"] for r in successful]))
+    # Count optimal runs (completed all sizes without timeout)
+    n_optimal = sum(1 for r in has_tree if r.get("dt1_optimal", False))
+    agg["n_optimal"] = n_optimal
+
+    # Count failed runs (never got a valid tree)
+    n_fail = sum(1 for r in runs if r["dt1_size"] is None)
+    agg["n_fail"] = n_fail
+
+    # Average metrics over runs with valid trees
+    if has_tree:
+        agg["samples"] = int(np.mean([r["samples"] for r in has_tree]))
         agg["features"] = runs[0]["features"]
-        agg["cart_size"] = float(np.mean([r["cart_size"] for r in successful]))
-        agg["cart_acc"] = round(float(np.mean([r["cart_acc"] for r in successful])), 4)
-        agg["dt1_size"] = round(float(np.mean([r["dt1_size"] for r in successful])), 1)
-        agg["dt1_acc"] = round(float(np.mean([r["dt1_acc"] for r in successful])), 4)
-        agg["dt1_time"] = round(float(np.mean([r["dt1_time"] for r in successful])), 4)
+        agg["cart_size"] = float(np.mean([r["cart_size"] for r in has_tree]))
+        agg["cart_acc"] = round(float(np.mean([r["cart_acc"] for r in has_tree])), 4)
+        agg["dt1_size"] = round(float(np.mean([r["dt1_size"] for r in has_tree])), 1)
+        agg["dt1_acc"] = round(float(np.mean([r["dt1_acc"] for r in has_tree])), 4)
+        agg["dt1_time"] = round(float(np.mean([r["dt1_time"] for r in has_tree])), 4)
     else:
         agg["samples"] = int(np.mean([r["samples"] for r in runs]))
         agg["features"] = runs[0]["features"]
@@ -306,10 +328,11 @@ def aggregate_batch(runs: list[dict[str, Any]]) -> dict[str, Any]:
         agg["dt1_acc"] = None
         agg["dt1_time"] = None
 
-    if n_failed == len(runs):
-        agg["status"] = "ALL_TIMEOUT"
-    elif n_failed > 0:
-        agg["status"] = "PARTIAL_TIMEOUT"
+    # Overall status
+    if n_fail == n_total:
+        agg["status"] = "ALL_FAIL"
+    elif n_fail > 0:
+        agg["status"] = "PARTIAL_FAIL"
     else:
         agg["status"] = "OK"
 
@@ -339,6 +362,7 @@ def write_csv(output_path: str, results: list[dict[str, Any]]) -> None:
         "dt1_size",
         "dt1_acc",
         "dt1_time",
+        "dt1_optimal",
         "status",
     ]
 
@@ -358,6 +382,9 @@ def write_csv_aggregated(output_path: str, results: list[dict[str, Any]]) -> Non
     fieldnames = [
         "dataset",
         "rate",
+        "n_total",
+        "n_optimal",
+        "n_fail",
         "samples",
         "features",
         "cart_size",
@@ -420,6 +447,10 @@ def run_batch_parallel(
 
         futures: list[Any] = []
 
+        # Use a safeguard buffer to allow DT1's internal timeout to complete naturally
+        SAFEGUARD_BUFFER = 60  # seconds
+        safeguard_timeout = timeout + SAFEGUARD_BUFFER
+
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             for run_idx in wave_runs:
                 fut = executor.submit(
@@ -427,15 +458,17 @@ def run_batch_parallel(
                 )
                 futures.append(fut)
 
-            # Wait for ALL futures: either complete normally or timeout
+            # Wait for ALL futures: either complete normally or safeguard timeout
             # wait() returns when all done OR timeout reached (whichever first)
-            done, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
-
-            vprint(
-                f"Wave {wave_idx + 1}: {len(done)} done, {len(not_done)} still running"
+            done, not_done = wait(
+                futures, timeout=safeguard_timeout, return_when=ALL_COMPLETED
             )
 
-        # Collect results: done futures have results, not_done are TIMEOUT
+            vprint(
+                f"Wave {wave_idx + 1}: {len(done)} done, {len(not_done)} still running (safeguard: {safeguard_timeout}s)"
+            )
+
+        # Collect results: done futures have results, not_done are TIMEOUT (safeguard killed them)
         for run_idx, fut in enumerate(futures):
             if fut in done:
                 try:
@@ -459,7 +492,7 @@ def run_batch_parallel(
                     )
                     vprint(f"Run {run_idx}: ERROR {type(e).__name__}")
             else:
-                # Timeout - mark as TIMEOUT (fut still running)
+                # Safeguard timeout - mark as TIMEOUT (thread was killed)
                 results.append(
                     {
                         "samples": expected_samples,
@@ -472,7 +505,7 @@ def run_batch_parallel(
                         "status": "TIMEOUT",
                     }
                 )
-                vprint(f"Run {run_idx}: TIMEOUT")
+                vprint(f"Run {run_idx}: TIMEOUT (safeguard killed thread)")
 
     return results
 
@@ -628,23 +661,18 @@ def main() -> None:
     print(f"Mode: {'per-run' if per_run else 'aggregated'}")
     print(f"Verbose: {VERBOSE}")
 
-    try:
-        for dataset in datasets:
-            run_experiment(
-                dataset,
-                rates,
-                batch_size,
-                timeout,
-                output_path,
-                per_run,
-                n_workers,
-            )
-    except KeyboardInterrupt:
-        print("\nAborted.")
-        return
+    for dataset in datasets:
+        run_experiment(
+            dataset,
+            rates,
+            batch_size,
+            timeout,
+            output_path,
+            per_run,
+            n_workers,
+        )
 
     print("\nDone.")
-    os._exit(0)  # Force exit to avoid threading cleanup hang
 
 
 if __name__ == "__main__":

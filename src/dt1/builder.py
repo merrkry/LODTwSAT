@@ -1,5 +1,6 @@
 import collections.abc
 import dataclasses
+import enum
 import threading
 import time
 import typing
@@ -23,6 +24,13 @@ from dt1.tree import (
     DecisionTree,
 )
 from dt1.types import FeatureMatrix, LabelVector
+
+
+class TimeoutBehavior(enum.Enum):
+    """Behavior when total timeout is reached."""
+
+    ERROR = "error"
+    RETURN_TREE = "return_tree"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -528,6 +536,7 @@ def build_dt1_classifier(
     timeout: float | None = None,
     solver: str = "glucose3",
     verbose: bool = False,
+    timeout_behavior: TimeoutBehavior = TimeoutBehavior.ERROR,
 ) -> BuildResult:
     """
     Build a DT1 classifier using SAT encoding.
@@ -536,15 +545,18 @@ def build_dt1_classifier(
         features: training features
         labels: training labels
         max_size: maximum tree size, or None to auto-compute via CART and trivial heuristics
-        timeout: timeout for SAT solver in seconds (default: 60)
+        timeout: total timeout in seconds (default: 60)
         solver: name of SAT solver to use (default: "glucose3")
         verbose: if True, print progress information
+        timeout_behavior: behavior when timeout is reached (default: ERROR)
 
     Returns:
         BuildResult containing the tree and timing information
 
     Raises:
         UpperBoundTooStrictError: if max_size is user-provided and too strict
+        UpperBoundTooStrictError: if timeout is reached with no valid tree and
+            timeout_behavior is ERROR
     """
     if timeout is None:
         timeout = 60.0
@@ -582,11 +594,31 @@ def build_dt1_classifier(
         if size % 2 == 0:
             continue
 
+        # Check remaining time before starting this size attempt
+        elapsed = time.time() - overall_start
+        remaining = timeout - elapsed
+
+        if remaining <= 0:
+            # Timeout reached before starting this size
+            if (
+                timeout_behavior == TimeoutBehavior.RETURN_TREE
+                and last_tree is not None
+            ):
+                # Return the best tree found so far
+                break
+            # Otherwise raise error (no valid tree)
+            assert not trusted_bound, (
+                f"Timeout reached before finding valid tree (max_size={max_size})"
+            )
+            raise UpperBoundTooStrictError(
+                f"Could not build a valid DT1 classifier within timeout={timeout}s."
+            )
+
         if verbose:
-            print(f"Trying size={size}...")
+            print(f"Trying size={size}... (remaining: {remaining:.1f}s)")
 
         tree, timing = _build_dt_from_fixed_size(
-            features, labels, size, timeout, solver
+            features, labels, size, remaining, solver
         )
         timings.append(timing)
 
