@@ -63,7 +63,6 @@ def train_dt1(
         y_train,
         max_size=max_size,
         timeout=timeout,
-        solver="cadical195",
         verbose=verbose,
         timeout_behavior=timeout_behavior,
     )
